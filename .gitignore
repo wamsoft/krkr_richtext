@@ -1,0 +1,8 @@
+build
+.vscode
+.claude
+.venv
+krkrZ.exe
+savedata
+data/*.ttf
+data/*.otf

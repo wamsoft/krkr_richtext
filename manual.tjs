@@ -1,0 +1,459 @@
+/**
+ * 擬似コードによるマニュアル
+ *
+ * richtext - 吉里吉里用リッチテキストレンダリングプラグイン
+ * 
+ * minikin (Android テキストレイアウトエンジン) と thorvg を使用した
+ * 高品質なテキストレンダリングを提供します。
+ * 
+ * 特徴:
+ * - 複数フォントのフォールバック対応
+ * - 多言語対応（RTL含む）
+ * - 絵文字対応
+ * - HTMLライクなタグによるスタイル指定
+ * - 縁取り・影などの装飾効果
+ * - パラグラフレイアウト（自動改行）
+ */
+class RichText {
+
+	// 水平アライン定数
+	const HALIGN_LEFT   = 0;  // 左揃え
+	const HALIGN_CENTER = 1;  // 中央揃え
+	const HALIGN_RIGHT  = 2;  // 右揃え
+
+	// 垂直アライン定数
+	const VALIGN_TOP    = 0;  // 上揃え
+	const VALIGN_MIDDLE = 1;  // 中央揃え
+	const VALIGN_BOTTOM = 2;  // 下揃え
+
+	/**
+	 * フォントファイルを登録 (static メソッド)
+	 * @param path フォントファイルパス（TTF/OTF/TTC対応）
+	 * @param name 登録名
+	 * @param index フォントインデックス（TTCの場合、省略時は0）
+	 * @return 成功した場合 true
+	 * @description
+	 * 使用例:
+	 *   RichText.registerFont("C:/Windows/Fonts/msgothic.ttc", "MSゴシック", 0);
+	 *   RichText.registerFont("fonts/NotoSansJP-Regular.otf", "Noto Sans JP");
+	 */
+	static function registerFont(path, name, index=0);
+
+	/**
+	 * フォント登録を解除 (static メソッド)
+	 * @param name 登録名
+	 * @return 成功した場合 true
+	 */
+	static function unregisterFont(name);
+
+	/**
+	 * ロケールを登録 (static メソッド)
+	 * @param locale ロケール文字列 (例: "ja_JP", "en_US", "zh_CN")
+	 * @return ロケールID
+	 * @description
+	 * ロケールは行分割ルールに影響します。日本語の禁則処理などに使用。
+	 * 使用例:
+	 *   var localeJP = RichText.registerLocale("ja_JP");
+	 *   style.setLocale("ja_JP");
+	 */
+	static function registerLocale(locale);
+
+	/**
+	 * テキストスタイルクラス
+	 * @description
+	 * テキストの論理的なスタイル（フォント、サイズ、ウェイト等）を定義します。
+	 * 描画外観（色、縁取り等）は Appearance クラスで設定します。
+	 */
+	class Style {
+
+		/**
+		 * コンストラクタ
+		 */
+		function Style();
+
+		/**
+		 * フォントコレクションの設定
+		 * @param names フォント名の配列（優先度順）
+		 * @description
+		 * 配列の順序がフォールバック優先度になります。
+		 * 最初のフォントで描画できない文字は次のフォントで描画されます。
+		 * 使用例:
+		 *   style.setFonts(["メインフォント", "絵文字フォント", "フォールバック"]);
+		 */
+		function setFonts(names);
+
+		/**
+		 * ロケールの設定
+		 * @param locale ロケール文字列
+		 * @description
+		 * 禁則処理などの行分割ルールに影響します。
+		 * 使用例:
+		 *   style.setLocale("ja_JP");
+		 */
+		function setLocale(locale);
+
+		/**
+		 * スタイルの複製
+		 * @return 複製された Style オブジェクト
+		 */
+		function clone();
+
+		/**
+		 * フォントサイズ（ピクセル単位）
+		 * @description デフォルト: 16
+		 */
+		property fontSize;
+
+		/**
+		 * フォントウェイト（太さ）
+		 * @description
+		 * 100〜900 の値。400 = 通常、700 = 太字
+		 * デフォルト: 400
+		 */
+		property fontWeight;
+
+		/**
+		 * イタリック
+		 * @description デフォルト: false
+		 */
+		property italic;
+
+		/**
+		 * 字間（em単位）
+		 * @description
+		 * 0.1 = フォントサイズの10%の追加スペース
+		 * デフォルト: 0
+		 */
+		property letterSpacing;
+
+		/**
+		 * 語間（em単位）
+		 * @description デフォルト: 0
+		 */
+		property wordSpacing;
+
+		/**
+		 * 水平スケール
+		 * @description
+		 * 1.0 = 通常、0.5 = 半分の幅
+		 * デフォルト: 1.0
+		 */
+		property scaleX;
+
+		/**
+		 * 斜体スキュー値
+		 * @description
+		 * 0 = 通常、負の値で右に傾斜
+		 * デフォルト: 0
+		 */
+		property skewX;
+	}
+
+	/**
+	 * 描画外観クラス
+	 * @description
+	 * Illustrator のアピアランスに相当します。
+	 * 塗り（Fill）とストローク（縁取り）を複数重ねて装飾効果を実現します。
+	 * 先に追加したものが下（奥）に描画されます。
+	 * 
+	 * 典型的な使用順序:
+	 * 1. 影 (addShadow または addFill でオフセット付き)
+	 * 2. 縁取り (addStroke)
+	 * 3. 本体の塗り (addFill)
+	 */
+	class Appearance {
+
+		/**
+		 * コンストラクタ
+		 */
+		function Appearance();
+
+		/**
+		 * 塗りの追加
+		 * @param color ARGB色値 (例: 0xFFFFFFFF = 白, 0xFF000000 = 黒)
+		 * @param offsetX X方向オフセット（省略時: 0）
+		 * @param offsetY Y方向オフセット（省略時: 0）
+		 * @description
+		 * 使用例:
+		 *   app.addFill(0xFFFFFFFF);  // 白で塗り
+		 *   app.addFill(0x80000000, 2, 2);  // 半透明黒で影効果
+		 */
+		function addFill(color, offsetX=0, offsetY=0);
+
+		/**
+		 * ストローク（縁取り）の追加
+		 * @param color ARGB色値
+		 * @param width 線幅
+		 * @param offsetX X方向オフセット（省略時: 0）
+		 * @param offsetY Y方向オフセット（省略時: 0）
+		 * @description
+		 * 使用例:
+		 *   app.addStroke(0xFF000000, 2);  // 黒2pxの縁取り
+		 */
+		function addStroke(color, width, offsetX=0, offsetY=0);
+
+		/**
+		 * 影の追加
+		 * @param color 影色（ARGB）
+		 * @param offsetX X方向オフセット
+		 * @param offsetY Y方向オフセット
+		 * @description
+		 * 影は自動的に一番下（奥）に追加されます。
+		 * 使用例:
+		 *   app.addShadow(0x80000000, 2, 2);  // 半透明黒の影
+		 */
+		function addShadow(color, offsetX, offsetY);
+
+		/**
+		 * 全スタイルのクリア
+		 */
+		function clear();
+
+		/**
+		 * 外観の複製
+		 * @return 複製された Appearance オブジェクト
+		 */
+		function clone();
+
+		/**
+		 * スタイルが空かどうか（読み取り専用）
+		 */
+		property isEmpty;
+
+		/**
+		 * スタイル数（読み取り専用）
+		 */
+		property count;
+	}
+
+	/**
+	 * 矩形クラス
+	 */
+	class Rect {
+
+		/**
+		 * コンストラクタ
+		 * @param x X座標
+		 * @param y Y座標
+		 * @param width 幅
+		 * @param height 高さ
+		 */
+		function Rect(x, y, width, height);
+
+		property x;
+		property y;
+		property width;
+		property height;
+		property left;    // 読み取り専用
+		property top;     // 読み取り専用
+		property right;   // 読み取り専用
+		property bottom;  // 読み取り専用
+	}
+}
+
+/**
+ * レイヤにリッチテキスト描画メソッドが拡張されます
+ */
+class Layer {
+
+	// =========================================================================
+	// 描画メソッド
+	// =========================================================================
+
+	/**
+	 * 1行テキストを描画
+	 * @param text 描画するテキスト
+	 * @param x 描画開始X座標
+	 * @param y 描画開始Y座標（ベースライン位置）
+	 * @param style RichText.Style オブジェクト
+	 * @param appearance RichText.Appearance オブジェクト
+	 * @return 描画領域の辞書 %[x, y, width, height, right, bottom]
+	 * @description
+	 * 基本的な1行テキスト描画。自動改行は行われません。
+	 * 
+	 * 使用例:
+	 *   var style = new RichText.Style();
+	 *   style.setFonts(["MSゴシック"]);
+	 *   style.fontSize = 24;
+	 *   
+	 *   var app = new RichText.Appearance();
+	 *   app.addFill(0xFFFFFFFF);
+	 *   
+	 *   var rect = layer.drawText("Hello World", 10, 50, style, app);
+	 */
+	function drawText(text, x, y, style, appearance);
+
+	/**
+	 * パラグラフ（複数行テキスト）を描画
+	 * @param text 描画するテキスト
+	 * @param rect 描画領域（RichText.Rect または [x, y, width, height] の配列、または辞書）
+	 * @param hAlign 水平アライン (RichText.HALIGN_LEFT/CENTER/RIGHT)
+	 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
+	 * @param style RichText.Style オブジェクト
+	 * @param appearance RichText.Appearance オブジェクト
+	 * @return 実際の描画領域の辞書
+	 * @description
+	 * 指定した矩形領域内に自動改行してテキストを描画します。
+	 * 
+	 * 使用例:
+	 *   var rect = layer.drawParagraph(
+	 *       "長いテキストは自動的に\n改行されます。",
+	 *       [10, 10, 300, 200],
+	 *       RichText.HALIGN_LEFT,
+	 *       RichText.VALIGN_TOP,
+	 *       style, app
+	 *   );
+	 */
+	function drawParagraph(text, rect, hAlign, vAlign, style, appearance);
+
+	/**
+	 * タグ付きテキストを描画
+	 * @param text タグ付きテキスト
+	 * @param rect 描画領域
+	 * @param hAlign 水平アライン
+	 * @param vAlign 垂直アライン
+	 * @param defaultStyle デフォルトの RichText.Style
+	 * @param defaultAppearance デフォルトの RichText.Appearance
+	 * @return 実際の描画領域の辞書
+	 * @description
+	 * HTMLライクなタグでスタイルを変更しながら描画します。
+	 * 
+	 * 対応タグ:
+	 *   <b>太字</b>
+	 *   <i>斜体</i>
+	 *   <font size='24' weight='700'>フォント変更</font>
+	 *   <color value='0xFFFF0000'>色変更</color>
+	 *   <outline color='0xFF000000' width='2'>縁取り</outline>
+	 *   <shadow color='0x80000000' x='2' y='2'>影付き</shadow>
+	 *   <br> 改行
+	 * 
+	 * エスケープ:
+	 *   &lt; → <
+	 *   &gt; → >
+	 *   &amp; → &
+	 * 
+	 * 使用例:
+	 *   layer.drawTaggedText(
+	 *       "<b>太字</b>と<color value='0xFFFF0000'>赤色</color>テキスト",
+	 *       [10, 10, 400, 300],
+	 *       RichText.HALIGN_LEFT,
+	 *       RichText.VALIGN_TOP,
+	 *       style, app
+	 *   );
+	 */
+	function drawTaggedText(text, rect, hAlign, vAlign, defaultStyle, defaultAppearance);
+
+	// =========================================================================
+	// 計測メソッド
+	// =========================================================================
+
+	/**
+	 * テキストサイズを計測（描画せずにサイズを取得）
+	 * @param text テキスト
+	 * @param style RichText.Style オブジェクト
+	 * @return サイズ情報の辞書 %[width, height, ascent, descent]
+	 * @description
+	 * 使用例:
+	 *   var size = layer.measureText("Hello", style);
+	 *   Debug.message("幅: " + size.width + ", 高さ: " + size.height);
+	 */
+	function measureText(text, style);
+
+	/**
+	 * パラグラフサイズを計測
+	 * @param text テキスト
+	 * @param maxWidth 最大幅
+	 * @param style RichText.Style オブジェクト
+	 * @return サイズ情報の辞書 %[width, height, lineCount]
+	 * @description
+	 * 使用例:
+	 *   var size = layer.measureParagraph("長いテキスト...", 300, style);
+	 *   Debug.message("行数: " + size.lineCount);
+	 */
+	function measureParagraph(text, maxWidth, style);
+
+	// =========================================================================
+	// キャッシュ制御
+	// =========================================================================
+
+	/**
+	 * グリフキャッシュの使用有無
+	 * @description
+	 * true (デフォルト): グリフをキャッシュして高速化
+	 * false: 毎回レンダリング
+	 */
+	property useCache;
+
+	/**
+	 * キャッシュのクリア
+	 */
+	function clearCache();
+
+	/**
+	 * キャッシュの最大サイズを設定
+	 * @param bytes 最大バイト数
+	 */
+	function setCacheMaxSize(bytes);
+
+	// =========================================================================
+	// 同期
+	// =========================================================================
+
+	/**
+	 * 描画の同期（thorvg の描画完了を待機）
+	 * @description
+	 * 通常は自動的に同期されますが、明示的に待機したい場合に使用します。
+	 */
+	function sync();
+}
+
+// =============================================================================
+// 使用例
+// =============================================================================
+
+/*
+// 基本的な使用例
+
+// フォント登録
+RichText.registerFont("C:/Windows/Fonts/msgothic.ttc", "MSゴシック", 0);
+RichText.registerFont("C:/Windows/Fonts/meiryo.ttc", "メイリオ", 0);
+
+// スタイル作成
+var style = new RichText.Style();
+style.setFonts(["MSゴシック", "メイリオ"]);  // フォールバック設定
+style.fontSize = 24;
+style.fontWeight = 400;
+style.setLocale("ja_JP");
+
+// 外観作成（影付き縁取り）
+var app = new RichText.Appearance();
+app.addShadow(0x80000000, 2, 2);     // 影（一番下）
+app.addStroke(0xFF000000, 2);        // 黒縁取り
+app.addFill(0xFFFFFFFF);             // 白塗り（一番上）
+
+// レイヤに描画
+var layer = new Layer(window, window.primaryLayer);
+layer.setImageSize(800, 600);
+layer.fillRect(0, 0, 800, 600, 0xFF808080);  // 背景
+
+// 1行描画
+layer.drawText("Hello World こんにちは", 10, 50, style, app);
+
+// パラグラフ描画
+layer.drawParagraph(
+    "これは長いテキストの例です。指定した幅で自動的に改行されます。",
+    [10, 100, 300, 200],
+    RichText.HALIGN_LEFT,
+    RichText.VALIGN_TOP,
+    style, app
+);
+
+// タグ付きテキスト
+layer.drawTaggedText(
+    "<b>太字</b>、<i>斜体</i>、<color value='0xFFFF0000'>赤色</color>の例",
+    [10, 350, 400, 200],
+    RichText.HALIGN_CENTER,
+    RichText.VALIGN_TOP,
+    style, app
+);
+*/
