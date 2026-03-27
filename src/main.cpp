@@ -640,6 +640,32 @@ void initRichText()
         if (tvg::Initializer::init(4) == tvg::Result::Success) {
             tvgInitialized = true;
             FontManager::instance().initialize();
+
+            // 吉里吉里のストレージシステムを使うフォントデータローダーを登録
+            FontManager::instance().setFontDataLoader(
+                [](const std::string& name) -> FontDataBuffer {
+                    ttstr path(name.c_str());
+                    IStream* stream = TVPCreateIStream(path, TJS_BS_READ);
+                    if (!stream) return nullptr;
+
+                    // ストリームサイズ取得
+                    STATSTG stat;
+                    if (FAILED(stream->Stat(&stat, STATFLAG_NONAME))) {
+                        stream->Release();
+                        return nullptr;
+                    }
+                    size_t size = static_cast<size_t>(stat.cbSize.QuadPart);
+
+                    // バッファに読み込み
+                    auto buffer = std::make_shared<std::vector<uint8_t>>(size);
+                    ULONG read = 0;
+                    HRESULT hr = stream->Read(buffer->data(), static_cast<ULONG>(size), &read);
+                    stream->Release();
+
+                    if (FAILED(hr) || read != size) return nullptr;
+                    return buffer;
+                });
+
             message_log("RichText: initialized");
         } else {
             error_log("RichText: failed to initialize thorvg");
