@@ -517,7 +517,7 @@ public:
     /**
      * 矩形描画
      */
-    void fillRect(REAL x, REAL y, REAL width, REAL height,
+    void fillStyleRect(REAL x, REAL y, REAL width, REAL height,
                   tjs_uint32 fillColor, tjs_uint32 strokeColor = 0,
                   REAL strokeWidth = 0)
     {
@@ -588,14 +588,6 @@ public:
     
     void clearCache() { renderer_.clearCache(); }
     void setCacheMaxSize(int bytes) { renderer_.setCacheMaxSize(static_cast<size_t>(bytes)); }
-    
-    // ------------------------------------------------------------------
-    // 描画同期
-    // ------------------------------------------------------------------
-    
-    void sync() {
-        renderer_.sync();
-    }
 };
 
 // ============================================================================
@@ -769,7 +761,7 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_METHOD(drawStyleParagraph);
     NCB_METHOD(drawStyleTaggedText);
     NCB_METHOD(drawStyleParagraphLayout);
-    NCB_METHOD(fillRect);
+    NCB_METHOD(fillStyleRect);
 
     // 計測メソッド
     NCB_METHOD(measureStyleText);
@@ -779,9 +771,6 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_PROPERTY(useCache, getUseCache, setUseCache);
     NCB_METHOD(clearCache);
     NCB_METHOD(setCacheMaxSize);
-
-    // 同期
-    NCB_METHOD(sync);
 }
 
 // 初期化・終了コールバック

@@ -14,22 +14,42 @@ python3 data/download_fonts.py
 
 既にダウンロード済みのフォントはスキップされます。
 
-## Google Fonts Noto Sans 多言語フォント
+## フォント一覧
 
-以下のフォントは Google Fonts から取得しています:
+以下のフォントは Google Fonts / Noto Fonts プロジェクトから取得しています:
+
 - https://github.com/notofonts/notofonts.github.io
-- https://github.com/googlefonts/noto-cjk
+- https://github.com/notofonts/noto-cjk
+- https://github.com/googlefonts/noto-emoji
 
-| ファイル名 | 言語・用途 |
-|-----------|-----------|
-| NotoSans-Regular.ttf | 欧州言語 (Latin, Greek, Cyrillic) |
-| NotoSansJP-Regular.otf | 日本語 |
-| NotoSansKR-Regular.otf | 韓国語 |
-| NotoSansSC-Regular.otf | 中国語（簡体字） |
-| NotoSansTC-Regular.otf | 中国語（繁体字） |
-| NotoSansArabic-Regular.ttf | アラビア語 (UI向け) |
-| NotoNaskhArabic-Regular.ttf | アラビア語 (本文向け、Naskh書体) |
-| NotoColorEmoji.ttf | カラー絵文字 |
-| NotoEmoji-Regular.ttf | モノクロ絵文字 |
+### 固定ウェイトフォント
 
-ライセンス: SIL Open Font License (OFL)
+| ファイル名 | 言語・用途 | ソース |
+|-----------|-----------|--------|
+| NotoSans-Regular.ttf | 欧州言語 (Latin, Greek, Cyrillic) | notofonts/latin-greek-cyrillic v2.015 |
+| NotoSansJP-Regular.otf | 日本語 | notofonts/noto-cjk Sans2.004 |
+| NotoSansKR-Regular.otf | 韓国語 | notofonts/noto-cjk Sans2.004 |
+| NotoSansSC-Regular.otf | 中国語（簡体字） | notofonts/noto-cjk Sans2.004 |
+| NotoSansTC-Regular.otf | 中国語（繁体字） | notofonts/noto-cjk Sans2.004 |
+| NotoSansArabic-Regular.ttf | アラビア語 (UI向け) | notofonts/arabic v2.013 |
+| NotoNaskhArabic-Regular.ttf | アラビア語 (本文向け、Naskh書体) | notofonts/arabic v2.021 |
+
+### バリアブルフォント
+
+| ファイル名 | 言語・用途 | 軸 |
+|-----------|-----------|-----|
+| NotoSans-VariableFont.ttf | 欧州言語 (Upright) | wght 100-900, wdth 62.5-100 |
+| NotoSans-Italic-VariableFont.ttf | 欧州言語 (Italic) | wght 100-900, wdth 62.5-100 |
+| NotoSansJP-VariableFont.ttf | 日本語 | wght 100-900 |
+
+### 絵文字フォント
+
+| ファイル名 | 形式 | 説明 |
+|-----------|------|------|
+| NotoColorEmoji.ttf | CBDT (ビットマップ) | カラー絵文字 |
+| Noto-COLRv1.ttf | COLRv1 (ベクター) | カラー絵文字（ベクターベース） |
+| NotoEmoji-Regular.ttf | アウトライン (Variable) | モノクロ絵文字 |
+
+## ライセンス
+
+全フォント: SIL Open Font License (OFL)
