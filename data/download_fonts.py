@@ -36,6 +36,24 @@ FONTS = [
         "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSans-v2.015/NotoSans-v2.015.zip",
         "NotoSans/unhinted/variable-ttf/NotoSans-Italic[wdth,wght].ttf",
     ),
+    # 欧州言語 Serif（固定ウェイト）
+    (
+        "NotoSerif-Regular.ttf",
+        "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSerif-v2.015/NotoSerif-v2.015.zip",
+        "NotoSerif/unhinted/ttf/NotoSerif-Regular.ttf",
+    ),
+    # 欧州言語 Serif（Variable Font: wght 100-900, wdth 62.5-100）
+    (
+        "NotoSerif-VariableFont.ttf",
+        "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSerif-v2.015/NotoSerif-v2.015.zip",
+        "NotoSerif/unhinted/variable-ttf/NotoSerif[wdth,wght].ttf",
+    ),
+    # 欧州言語 Serif Italic（Variable Font: wght 100-900, wdth 62.5-100）
+    (
+        "NotoSerif-Italic-VariableFont.ttf",
+        "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSerif-v2.015/NotoSerif-v2.015.zip",
+        "NotoSerif/unhinted/variable-ttf/NotoSerif-Italic[wdth,wght].ttf",
+    ),
     # 日本語（固定ウェイト）
     (
         "NotoSansJP-Regular.otf",
@@ -77,6 +95,36 @@ FONTS = [
         "NotoNaskhArabic-Regular.ttf",
         "https://github.com/notofonts/arabic/releases/download/NotoNaskhArabic-v2.021/NotoNaskhArabic-v2.021.zip",
         "NotoNaskhArabic/unhinted/ttf/NotoNaskhArabic-Regular.ttf",
+    ),
+    # Serif フォント（日本語・固定ウェイト）
+    (
+        "NotoSerifJP-Regular.otf",
+        "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/07_NotoSerifCJKjp.zip",
+        "OTF/Japanese/NotoSerifCJKjp-Regular.otf",
+    ),
+    # Serif フォント（日本語・Variable Font: wght 200-900）
+    (
+        "NotoSerifJP-VariableFont.ttf",
+        "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/02_NotoSerifCJK-OTF-VF.zip",
+        "Variable/OTF/Subset/NotoSerifJP-VF.otf",
+    ),
+    # Serif フォント（韓国語・固定ウェイト）
+    (
+        "NotoSerifKR-Regular.otf",
+        "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/08_NotoSerifCJKkr.zip",
+        "OTF/Korean/NotoSerifCJKkr-Regular.otf",
+    ),
+    # Serif フォント（簡体字中国語・固定ウェイト）
+    (
+        "NotoSerifSC-Regular.otf",
+        "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/09_NotoSerifCJKsc.zip",
+        "OTF/SimplifiedChinese/NotoSerifCJKsc-Regular.otf",
+    ),
+    # Serif フォント（繁体字中国語・固定ウェイト）
+    (
+        "NotoSerifTC-Regular.otf",
+        "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/10_NotoSerifCJKtc.zip",
+        "OTF/TraditionalChinese/NotoSerifCJKtc-Regular.otf",
     ),
     # カラー絵文字 CBDT（直接ダウンロード）
     (

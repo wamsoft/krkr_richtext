@@ -19,9 +19,6 @@
 
 using namespace richtext;
 
-// ncbind用の型定義
-typedef float REAL;
-
 // ============================================================================
 // ログ出力
 // ============================================================================
@@ -122,8 +119,8 @@ public:
     }
     
     // プロパティ: fontSize
-    void setFontSize(REAL size) { style.fontSize = size; }
-    REAL getFontSize() const { return style.fontSize; }
+    void setFontSize(float size) { style.fontSize = size; }
+    float getFontSize() const { return style.fontSize; }
     
     // プロパティ: fontWeight
     void setFontWeight(int weight) { style.fontWeight = static_cast<uint16_t>(weight); }
@@ -134,24 +131,24 @@ public:
     bool getItalic() const { return style.italic; }
     
     // プロパティ: letterSpacing
-    void setLetterSpacing(REAL v) { style.letterSpacing = v; }
-    REAL getLetterSpacing() const { return style.letterSpacing; }
+    void setLetterSpacing(float v) { style.letterSpacing = v; }
+    float getLetterSpacing() const { return style.letterSpacing; }
     
     // プロパティ: wordSpacing
-    void setWordSpacing(REAL v) { style.wordSpacing = v; }
-    REAL getWordSpacing() const { return style.wordSpacing; }
+    void setWordSpacing(float v) { style.wordSpacing = v; }
+    float getWordSpacing() const { return style.wordSpacing; }
     
     // プロパティ: scaleX
-    void setScaleX(REAL v) { style.scaleX = v; }
-    REAL getScaleX() const { return style.scaleX; }
+    void setScaleX(float v) { style.scaleX = v; }
+    float getScaleX() const { return style.scaleX; }
     
     // プロパティ: skewX
-    void setSkewX(REAL v) { style.skewX = v; }
-    REAL getSkewX() const { return style.skewX; }
+    void setSkewX(float v) { style.skewX = v; }
+    float getSkewX() const { return style.skewX; }
     
     // プロパティ: fontWidth（バリアブルフォントのwdth軸、パーセント）
-    void setFontWidth(REAL v) { style.fontWidth = v; }
-    REAL getFontWidth() const { return style.fontWidth; }
+    void setFontWidth(float v) { style.fontWidth = v; }
+    float getFontWidth() const { return style.fontWidth; }
     
     // プロパティ: bidi（双方向テキスト制御）
     void setBidi(int v) { style.bidi = static_cast<minikin::Bidi>(v); }
@@ -186,7 +183,7 @@ public:
      * @param offsetX X方向オフセット（省略可）
      * @param offsetY Y方向オフセット（省略可）
      */
-    void addFill(tjs_uint32 color, REAL offsetX = 0, REAL offsetY = 0) {
+    void addFill(tjs_uint32 color, float offsetX = 0, float offsetY = 0) {
         appearance.addFill(color, offsetX, offsetY);
     }
     
@@ -197,7 +194,7 @@ public:
      * @param offsetX X方向オフセット（省略可）
      * @param offsetY Y方向オフセット（省略可）
      */
-    void addStroke(tjs_uint32 color, REAL width, REAL offsetX = 0, REAL offsetY = 0) {
+    void addStroke(tjs_uint32 color, float width, float offsetX = 0, float offsetY = 0) {
         appearance.addStroke(color, width, offsetX, offsetY);
     }
     
@@ -207,7 +204,7 @@ public:
      * @param offsetX X方向オフセット
      * @param offsetY Y方向オフセット
      */
-    void addShadow(tjs_uint32 color, REAL offsetX, REAL offsetY) {
+    void addShadow(tjs_uint32 color, float offsetX, float offsetY) {
         appearance.addShadow(color, offsetX, offsetY);
     }
     
@@ -225,7 +222,7 @@ public:
      * @param offsetX X方向オフセット（省略可）
      * @param offsetY Y方向オフセット（省略可）
      */
-    void addColor(tjs_uint32 color, REAL offsetX = 0, REAL offsetY = 0) {
+    void addColor(tjs_uint32 color, float offsetX = 0, float offsetY = 0) {
         appearance.addColor(color, offsetX, offsetY);
     }
     
@@ -236,7 +233,7 @@ public:
      * @param offsetX X方向オフセット（省略可）
      * @param offsetY Y方向オフセット（省略可）
      */
-    void setOutline(tjs_uint32 color, REAL width, REAL offsetX = 0, REAL offsetY = 0) {
+    void setOutline(tjs_uint32 color, float width, float offsetX = 0, float offsetY = 0) {
         appearance.setOutline(color, width, offsetX, offsetY);
     }
     
@@ -247,7 +244,7 @@ public:
      * @param offsetX X方向オフセット（省略可）
      * @param offsetY Y方向オフセット（省略可）
      */
-    void addOutline(tjs_uint32 color, REAL width, REAL offsetX = 0, REAL offsetY = 0) {
+    void addOutline(tjs_uint32 color, float width, float offsetX = 0, float offsetY = 0) {
         appearance.addOutline(color, width, offsetX, offsetY);
     }
     
@@ -257,7 +254,7 @@ public:
      * @param offsetX X方向オフセット
      * @param offsetY Y方向オフセット
      */
-    void setShadow(tjs_uint32 color, REAL offsetX, REAL offsetY) {
+    void setShadow(tjs_uint32 color, float offsetX, float offsetY) {
         appearance.setShadow(color, offsetX, offsetY);
     }
     
@@ -307,10 +304,10 @@ public:
         layout.layout(tjsToU16(text), style->style);
     }
 
-    REAL getWidth() const { return layout.getWidth(); }
-    REAL getHeight() const { return layout.getHeight(); }
-    REAL getAscent() const { return layout.getAscent(); }
-    REAL getDescent() const { return layout.getDescent(); }
+    float getWidth() const { return layout.getWidth(); }
+    float getHeight() const { return layout.getHeight(); }
+    float getAscent() const { return layout.getAscent(); }
+    float getDescent() const { return layout.getDescent(); }
     int getGlyphCount() const { return static_cast<int>(layout.getGlyphCount()); }
 
     RichTextLayout* clone() const {
@@ -330,7 +327,7 @@ public:
 
     RichTextParagraphLayout() {}
 
-    void measure(const tjs_char* text, REAL maxWidth, RichTextStyle* style) {
+    void measure(const tjs_char* text, float maxWidth, RichTextStyle* style) {
         if (!style) TVPThrowExceptionMessage(TJS_W("style is required"));
         cachedText_ = tjsToU16(text);
         cachedMaxWidth_ = maxWidth;
@@ -339,12 +336,12 @@ public:
     }
 
     int getLineCount() const { return static_cast<int>(layout.getLineCount()); }
-    REAL getTotalHeight() const { return layout.getTotalHeight(); }
-    REAL getMaxWidth() const { return layout.getMaxWidth(); }
+    float getTotalHeight() const { return layout.getTotalHeight(); }
+    float getMaxWidth() const { return layout.getMaxWidth(); }
     int getTotalGlyphCount() const { return static_cast<int>(layout.getTotalGlyphCount()); }
 
-    void setLineSpacing(REAL v) { layout.setLineSpacing(v); }
-    REAL getLineSpacing() const { return layout.getLineSpacing(); }
+    void setLineSpacing(float v) { layout.setLineSpacing(v); }
+    float getLineSpacing() const { return layout.getLineSpacing(); }
     
     void setBreakStrategy(int v) { layout.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
     int getBreakStrategy() const { return static_cast<int>(layout.getBreakStrategy()); }
@@ -476,7 +473,7 @@ public:
     /**
      * 1行テキスト描画
      */
-    tTJSVariant drawStyleText(const tjs_char* text, REAL x, REAL y,
+    tTJSVariant drawStyleText(const tjs_char* text, float x, float y,
                                RichTextStyle* style, RichTextAppearance* appearance)
     {
         if (!style || !appearance) {
@@ -493,7 +490,7 @@ public:
     /**
      * パラグラフ描画
      */
-    tTJSVariant drawStyleParagraph(const tjs_char* text, REAL x, REAL y, REAL width, REAL height,
+    tTJSVariant drawStyleParagraph(const tjs_char* text, float x, float y, float width, float height,
                                     int hAlign, int vAlign,
                                     RichTextStyle* style, RichTextAppearance* appearance)
     {
@@ -516,7 +513,7 @@ public:
     /**
      * タグ付きテキスト描画
      */
-    tTJSVariant drawStyleTaggedText(const tjs_char* text, REAL x, REAL y, REAL width, REAL height,
+    tTJSVariant drawStyleTaggedText(const tjs_char* text, float x, float y, float width, float height,
                                      int hAlign, int vAlign,
                                      RichTextStyle* defaultStyle,
                                      RichTextAppearance* defaultAppearance)
@@ -544,7 +541,7 @@ public:
      * ParagraphLayout 描画（逐次表示対応）
      */
     tTJSVariant drawStyleParagraphLayout(RichTextParagraphLayout* paraLayout,
-                                          REAL x, REAL y, REAL width, REAL height,
+                                          float x, float y, float width, float height,
                                           int hAlign, int vAlign,
                                           RichTextStyle* style,
                                           RichTextAppearance* appearance,
@@ -569,14 +566,14 @@ public:
     /**
      * 矩形描画
      */
-    void fillStyleRect(REAL x, REAL y, REAL width, REAL height,
+    void fillStyleRect(float x, float y, float width, float height,
                   tjs_uint32 fillColor, tjs_uint32 strokeColor = 0,
-                  REAL strokeWidth = 0)
+                  float strokeWidth = 0)
     {
         renderer_.drawRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
         renderer_.sync();
-        redraw(static_cast<int>(x), static_cast<int>(y),
-               static_cast<int>(width) + 1, static_cast<int>(height) + 1);
+         redraw(static_cast<int>(x), static_cast<int>(y),
+             static_cast<int>(width) + 1, static_cast<int>(height) + 1);
     }
 
     // ------------------------------------------------------------------
@@ -611,7 +608,7 @@ public:
     /**
      * パラグラフ計測
      */
-    tTJSVariant measureStyleParagraph(const tjs_char* text, REAL maxWidth, RichTextStyle* style)
+    tTJSVariant measureStyleParagraph(const tjs_char* text, float maxWidth, RichTextStyle* style)
     {
         if (!style) {
             TVPThrowExceptionMessage(TJS_W("style is required"));
@@ -732,6 +729,144 @@ public:
 };
 
 // ============================================================================
+// RawCallback helpers (省略可能引数対応)
+// ============================================================================
+
+static tjs_error TJS_INTF_METHOD
+RichTextAppearance_addFill_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                       tTJSVariant** param, RichTextAppearance* objthis)
+{
+    if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+    tjs_uint32 color = static_cast<tjs_uint32>(param[0]->AsInteger());
+    float offsetX = (numparams >= 2) ? static_cast<float>(param[1]->AsReal()) : 0;
+    float offsetY = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    objthis->addFill(color, offsetX, offsetY);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichTextAppearance_addStroke_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                         tTJSVariant** param, RichTextAppearance* objthis)
+{
+    if (numparams < 2) return TJS_E_BADPARAMCOUNT;
+    tjs_uint32 color = static_cast<tjs_uint32>(param[0]->AsInteger());
+    float width = static_cast<float>(param[1]->AsReal());
+    float offsetX = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    float offsetY = (numparams >= 4) ? static_cast<float>(param[3]->AsReal()) : 0;
+    objthis->addStroke(color, width, offsetX, offsetY);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichTextAppearance_addColor_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                        tTJSVariant** param, RichTextAppearance* objthis)
+{
+    if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+    tjs_uint32 color = static_cast<tjs_uint32>(param[0]->AsInteger());
+    float offsetX = (numparams >= 2) ? static_cast<float>(param[1]->AsReal()) : 0;
+    float offsetY = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    objthis->addColor(color, offsetX, offsetY);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichTextAppearance_setOutline_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                          tTJSVariant** param, RichTextAppearance* objthis)
+{
+    if (numparams < 2) return TJS_E_BADPARAMCOUNT;
+    tjs_uint32 color = static_cast<tjs_uint32>(param[0]->AsInteger());
+    float width = static_cast<float>(param[1]->AsReal());
+    float offsetX = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    float offsetY = (numparams >= 4) ? static_cast<float>(param[3]->AsReal()) : 0;
+    objthis->setOutline(color, width, offsetX, offsetY);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichTextAppearance_addOutline_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                          tTJSVariant** param, RichTextAppearance* objthis)
+{
+    if (numparams < 2) return TJS_E_BADPARAMCOUNT;
+    tjs_uint32 color = static_cast<tjs_uint32>(param[0]->AsInteger());
+    float width = static_cast<float>(param[1]->AsReal());
+    float offsetX = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    float offsetY = (numparams >= 4) ? static_cast<float>(param[3]->AsReal()) : 0;
+    objthis->addOutline(color, width, offsetX, offsetY);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+LayerExRichText_drawStyleParagraphLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                                     tTJSVariant** param, LayerExRichText* objthis)
+{
+    if (numparams < 9) return TJS_E_BADPARAMCOUNT;
+    RichTextParagraphLayout* paraLayout = ncbInstanceAdaptor<RichTextParagraphLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    float x = static_cast<float>(param[1]->AsReal());
+    float y = static_cast<float>(param[2]->AsReal());
+    float width = static_cast<float>(param[3]->AsReal());
+    float height = static_cast<float>(param[4]->AsReal());
+    int hAlign = static_cast<int>(param[5]->AsInteger());
+    int vAlign = static_cast<int>(param[6]->AsInteger());
+    RichTextStyle* style = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[7]->AsObjectNoAddRef());
+    RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[8]->AsObjectNoAddRef());
+    int maxGlyphs = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
+
+    if (result) {
+        *result = objthis->drawStyleParagraphLayout(
+            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
+    } else {
+        objthis->drawStyleParagraphLayout(
+            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
+    }
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+LayerExRichText_fillStyleRect_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                          tTJSVariant** param, LayerExRichText* objthis)
+{
+    if (numparams < 5) return TJS_E_BADPARAMCOUNT;
+    float x = static_cast<float>(param[0]->AsReal());
+    float y = static_cast<float>(param[1]->AsReal());
+    float width = static_cast<float>(param[2]->AsReal());
+    float height = static_cast<float>(param[3]->AsReal());
+    tjs_uint32 fillColor = static_cast<tjs_uint32>(param[4]->AsInteger());
+    tjs_uint32 strokeColor = (numparams >= 6) ? static_cast<tjs_uint32>(param[5]->AsInteger()) : 0;
+    float strokeWidth = (numparams >= 7) ? static_cast<float>(param[6]->AsReal()) : 0;
+
+    objthis->fillStyleRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichText_registerFont_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                  tTJSVariant** param, iTJSDispatch2* objthis)
+{
+    if (numparams < 2) return TJS_E_BADPARAMCOUNT;
+    ttstr path = static_cast<ttstr>(*param[0]);
+    ttstr name = static_cast<ttstr>(*param[1]);
+    int index = (numparams >= 3) ? static_cast<int>(param[2]->AsInteger()) : 0;
+    bool ok = RichText::registerFont(path.c_str(), name.c_str(), index);
+    if (result) *result = ok;
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+RichText_registerVariableFont_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                          tTJSVariant** param, iTJSDispatch2* objthis)
+{
+    if (numparams < 3) return TJS_E_BADPARAMCOUNT;
+    ttstr path = static_cast<ttstr>(*param[0]);
+    ttstr name = static_cast<ttstr>(*param[1]);
+    int weight = static_cast<int>(param[2]->AsInteger());
+    bool italic = (numparams >= 4) ? (param[3]->AsInteger() != 0) : false;
+    int index = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : 0;
+    bool ok = RichText::registerVariableFont(path.c_str(), name.c_str(), weight, italic, index);
+    if (result) *result = ok;
+    return TJS_S_OK;
+}
+
+// ============================================================================
 // thorvg 初期化・終了
 // ============================================================================
 
@@ -810,13 +945,13 @@ NCB_REGISTER_SUBCLASS(RichTextStyle) {
 // RichTextAppearance サブクラス
 NCB_REGISTER_SUBCLASS(RichTextAppearance) {
     NCB_CONSTRUCTOR(());
-    NCB_METHOD(addFill);
-    NCB_METHOD(addStroke);
+    NCB_METHOD_RAW_CALLBACK(addFill, RichTextAppearance_addFill_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(addStroke, RichTextAppearance_addStroke_RawCallback, 0);
     NCB_METHOD(addShadow);
     NCB_METHOD(setColor);
-    NCB_METHOD(addColor);
-    NCB_METHOD(setOutline);
-    NCB_METHOD(addOutline);
+    NCB_METHOD_RAW_CALLBACK(addColor, RichTextAppearance_addColor_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(setOutline, RichTextAppearance_setOutline_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(addOutline, RichTextAppearance_addOutline_RawCallback, 0);
     NCB_METHOD(setShadow);
     NCB_METHOD(clear);
     NCB_PROPERTY_RO(isEmpty, isEmpty);
@@ -854,8 +989,8 @@ NCB_REGISTER_SUBCLASS(RichTextParagraphLayout) {
 NCB_REGISTER_CLASS(RichText)
 {
     // フォント管理
-    NCB_METHOD(registerFont);
-    NCB_METHOD(registerVariableFont);
+    NCB_METHOD_RAW_CALLBACK(registerFont, RichText_registerFont_RawCallback, TJS_STATICMEMBER);
+    NCB_METHOD_RAW_CALLBACK(registerVariableFont, RichText_registerVariableFont_RawCallback, TJS_STATICMEMBER);
     NCB_METHOD(unregisterFont);
     NCB_METHOD(registerCollection);
     NCB_METHOD(unregisterCollection);
@@ -912,8 +1047,8 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_METHOD(drawStyleText);
     NCB_METHOD(drawStyleParagraph);
     NCB_METHOD(drawStyleTaggedText);
-    NCB_METHOD(drawStyleParagraphLayout);
-    NCB_METHOD(fillStyleRect);
+    NCB_METHOD_RAW_CALLBACK(drawStyleParagraphLayout, LayerExRichText_drawStyleParagraphLayout_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(fillStyleRect, LayerExRichText_fillStyleRect_RawCallback, 0);
 
     // 計測メソッド
     NCB_METHOD(measureStyleText);
