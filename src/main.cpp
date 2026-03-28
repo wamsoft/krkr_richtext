@@ -149,6 +149,14 @@ public:
     void setSkewX(REAL v) { style.skewX = v; }
     REAL getSkewX() const { return style.skewX; }
     
+    // プロパティ: fontWidth（バリアブルフォントのwdth軸、パーセント）
+    void setFontWidth(REAL v) { style.fontWidth = v; }
+    REAL getFontWidth() const { return style.fontWidth; }
+    
+    // プロパティ: bidi（双方向テキスト制御）
+    void setBidi(int v) { style.bidi = static_cast<minikin::Bidi>(v); }
+    int getBidi() const { return static_cast<int>(style.bidi); }
+    
     // プロパティ: locale
     void setLocale(const tjs_char* locale) {
         style.localeId = FontManager::instance().registerLocale(tjsToNarrow(locale));
@@ -194,24 +202,63 @@ public:
     }
     
     /**
-     * 影追加（塗りで実装）
+     * 影追加（最背面に追加）
      * @param color 影色
      * @param offsetX X方向オフセット
      * @param offsetY Y方向オフセット
      */
     void addShadow(tjs_uint32 color, REAL offsetX, REAL offsetY) {
-        // 影は最初に描画されるように先頭に追加する必要があるため
-        // Appearanceを再構築
-        Appearance newApp;
-        newApp.addFill(color, offsetX, offsetY);
-        for (const auto& s : appearance.getStyles()) {
-            if (s.type == DrawStyle::Type::Fill) {
-                newApp.addFill(s);
-            } else {
-                newApp.addStroke(s);
-            }
-        }
-        appearance = newApp;
+        appearance.addShadow(color, offsetX, offsetY);
+    }
+    
+    /**
+     * テキスト色の設定（既存の通常Fillを置換）
+     * @param color ARGB色値
+     */
+    void setColor(tjs_uint32 color) {
+        appearance.setColor(color);
+    }
+    
+    /**
+     * テキスト色の追加（最前面に追加）
+     * @param color ARGB色値
+     * @param offsetX X方向オフセット（省略可）
+     * @param offsetY Y方向オフセット（省略可）
+     */
+    void addColor(tjs_uint32 color, REAL offsetX = 0, REAL offsetY = 0) {
+        appearance.addColor(color, offsetX, offsetY);
+    }
+    
+    /**
+     * 縁取りの設定（既存のStrokeを置換）
+     * @param color ARGB色値
+     * @param width 線幅
+     * @param offsetX X方向オフセット（省略可）
+     * @param offsetY Y方向オフセット（省略可）
+     */
+    void setOutline(tjs_uint32 color, REAL width, REAL offsetX = 0, REAL offsetY = 0) {
+        appearance.setOutline(color, width, offsetX, offsetY);
+    }
+    
+    /**
+     * 縁取りの追加（最背面Strokeに追加）
+     * @param color ARGB色値
+     * @param width 線幅
+     * @param offsetX X方向オフセット（省略可）
+     * @param offsetY Y方向オフセット（省略可）
+     */
+    void addOutline(tjs_uint32 color, REAL width, REAL offsetX = 0, REAL offsetY = 0) {
+        appearance.addOutline(color, width, offsetX, offsetY);
+    }
+    
+    /**
+     * 影の設定（既存の影Fillを置換）
+     * @param color 影色
+     * @param offsetX X方向オフセット
+     * @param offsetY Y方向オフセット
+     */
+    void setShadow(tjs_uint32 color, REAL offsetX, REAL offsetY) {
+        appearance.setShadow(color, offsetX, offsetY);
     }
     
     /**
@@ -298,6 +345,9 @@ public:
 
     void setLineSpacing(REAL v) { layout.setLineSpacing(v); }
     REAL getLineSpacing() const { return layout.getLineSpacing(); }
+    
+    void setBreakStrategy(int v) { layout.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
+    int getBreakStrategy() const { return static_cast<int>(layout.getBreakStrategy()); }
 
     tTJSVariant getLineInfo(int index) const {
         if (index < 0 || index >= static_cast<int>(layout.getLineCount())) {
@@ -357,6 +407,8 @@ tTJSVariant toVariant(const richtext::RectF& rect) {
 // 列挙型コンバータ
 NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::HAlign);
 NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::VAlign);
+NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::BreakStrategy);
+NCB_TYPECONV_CAST_INTEGER(minikin::Bidi);
 
 // ============================================================================
 // レイヤー拡張: LayerExRichText
@@ -610,12 +662,63 @@ public:
     }
     
     /**
+     * バリアブルフォント登録
+     * @param path フォントファイルパス
+     * @param name 登録名
+     * @param weight フォントウェイト（100-900）
+     * @param italic イタリック
+     * @param index フォントインデックス（OTCの場合）
+     * @return 成功時 true
+     */
+    static bool registerVariableFont(const tjs_char* path, const tjs_char* name,
+                                      int weight, bool italic = false, int index = 0) {
+        std::string pathStr = tjsToNarrow(path);
+        std::string nameStr = tjsToNarrow(name);
+        return FontManager::instance().registerVariableFont(
+            pathStr, nameStr, static_cast<uint16_t>(weight), italic, index);
+    }
+    
+    /**
      * フォント解除
      * @param name 登録名
      * @return 成功時 true
      */
     static bool unregisterFont(const tjs_char* name) {
         return FontManager::instance().unregisterFont(tjsToNarrow(name));
+    }
+    
+    /**
+     * 名前付きフォントコレクション登録
+     * @param collectionName コレクション名
+     * @param fontNames フォント名の配列
+     * @return 成功時 true
+     */
+    static bool registerCollection(const tjs_char* collectionName, tTJSVariant fontNames) {
+        if (!IsArray(fontNames)) {
+            TVPThrowExceptionMessage(TJS_W("fontNames must be an array"));
+            return false;
+        }
+        
+        ncbPropAccessor arr(fontNames);
+        tjs_int count = arr.GetArrayCount();
+        std::vector<std::string> names;
+        
+        for (tjs_int i = 0; i < count; ++i) {
+            ttstr name = arr.getStrValue(i);
+            names.push_back(tjsToNarrow(name.c_str()));
+        }
+        
+        return FontManager::instance().registerCollection(
+            tjsToNarrow(collectionName), names);
+    }
+    
+    /**
+     * 名前付きフォントコレクション解除
+     * @param collectionName コレクション名
+     * @return 成功時 true
+     */
+    static bool unregisterCollection(const tjs_char* collectionName) {
+        return FontManager::instance().unregisterCollection(tjsToNarrow(collectionName));
     }
     
     /**
@@ -698,6 +801,8 @@ NCB_REGISTER_SUBCLASS(RichTextStyle) {
     NCB_PROPERTY(wordSpacing, getWordSpacing, setWordSpacing);
     NCB_PROPERTY(scaleX, getScaleX, setScaleX);
     NCB_PROPERTY(skewX, getSkewX, setSkewX);
+    NCB_PROPERTY(fontWidth, getFontWidth, setFontWidth);
+    NCB_PROPERTY(bidi, getBidi, setBidi);
     NCB_METHOD(setLocale);
     NCB_METHOD(clone);
 };
@@ -708,6 +813,11 @@ NCB_REGISTER_SUBCLASS(RichTextAppearance) {
     NCB_METHOD(addFill);
     NCB_METHOD(addStroke);
     NCB_METHOD(addShadow);
+    NCB_METHOD(setColor);
+    NCB_METHOD(addColor);
+    NCB_METHOD(setOutline);
+    NCB_METHOD(addOutline);
+    NCB_METHOD(setShadow);
     NCB_METHOD(clear);
     NCB_PROPERTY_RO(isEmpty, isEmpty);
     NCB_PROPERTY_RO(count, getCount);
@@ -735,6 +845,7 @@ NCB_REGISTER_SUBCLASS(RichTextParagraphLayout) {
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
     NCB_PROPERTY_RO(totalGlyphCount, getTotalGlyphCount);
     NCB_PROPERTY(lineSpacing, getLineSpacing, setLineSpacing);
+    NCB_PROPERTY(breakStrategy, getBreakStrategy, setBreakStrategy);
     NCB_METHOD(getLineInfo);
     NCB_METHOD(clone);
 };
@@ -744,18 +855,33 @@ NCB_REGISTER_CLASS(RichText)
 {
     // フォント管理
     NCB_METHOD(registerFont);
+    NCB_METHOD(registerVariableFont);
     NCB_METHOD(unregisterFont);
+    NCB_METHOD(registerCollection);
+    NCB_METHOD(unregisterCollection);
     NCB_METHOD(registerLocale);
     
     // 水平アライン
-    Variant(TJS_W("HALIGN_LEFT"),   (int)ParagraphLayout::HAlign::Left);
-    Variant(TJS_W("HALIGN_CENTER"), (int)ParagraphLayout::HAlign::Center);
-    Variant(TJS_W("HALIGN_RIGHT"),  (int)ParagraphLayout::HAlign::Right);
+    Variant(TJS_W("HALIGN_LEFT"),    (int)ParagraphLayout::HAlign::Left);
+    Variant(TJS_W("HALIGN_CENTER"),  (int)ParagraphLayout::HAlign::Center);
+    Variant(TJS_W("HALIGN_RIGHT"),   (int)ParagraphLayout::HAlign::Right);
+    Variant(TJS_W("HALIGN_JUSTIFY"), (int)ParagraphLayout::HAlign::Justify);
     
     // 垂直アライン
     Variant(TJS_W("VALIGN_TOP"),    (int)ParagraphLayout::VAlign::Top);
     Variant(TJS_W("VALIGN_MIDDLE"), (int)ParagraphLayout::VAlign::Middle);
     Variant(TJS_W("VALIGN_BOTTOM"), (int)ParagraphLayout::VAlign::Bottom);
+    
+    // 行分割戦略
+    Variant(TJS_W("BREAK_GREEDY"),       (int)ParagraphLayout::BreakStrategy::Greedy);
+    Variant(TJS_W("BREAK_HIGH_QUALITY"), (int)ParagraphLayout::BreakStrategy::HighQuality);
+    Variant(TJS_W("BREAK_BALANCED"),     (int)ParagraphLayout::BreakStrategy::Balanced);
+    
+    // 双方向テキスト
+    Variant(TJS_W("BIDI_LTR"),         (int)minikin::Bidi::LTR);
+    Variant(TJS_W("BIDI_RTL"),         (int)minikin::Bidi::RTL);
+    Variant(TJS_W("BIDI_DEFAULT_LTR"), (int)minikin::Bidi::DEFAULT_LTR);
+    Variant(TJS_W("BIDI_DEFAULT_RTL"), (int)minikin::Bidi::DEFAULT_RTL);
     
     // サブクラス
     NCB_SUBCLASS(Style, RichTextStyle);
