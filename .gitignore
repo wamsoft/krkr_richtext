@@ -3,6 +3,7 @@ build
 .claude
 .venv
 krkrZ.exe
+krkrz64.exe
 savedata
 data/*.ttf
 data/*.otf

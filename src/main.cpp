@@ -69,11 +69,23 @@ static ttstr u16ToTjs(const std::u16string& str)
  */
 static std::string tjsToNarrow(const tjs_char* str)
 {
-    if (!str) return std::string();
-    tTJSString s(str);
-    tjs_int len = s.GetNarrowStrLen();
-    std::string result(len, '\0');
-    s.ToNarrowStr(&result[0], len + 1);
+    std::string result;
+    if (str) {
+        tjs_int len = TVPWideCharToUtf8String( str, NULL );
+        if( len > 0 ) {
+            char* buf = new char[len];
+            if( buf ) {
+                try {
+                    len = TVPWideCharToUtf8String( str, buf );
+                    if( len > 0 ) result.assign( buf, len );
+                    delete[] buf;
+                } catch(...) {
+                    delete[] buf;
+                    throw;
+                }
+            }
+        }
+    }
     return result;
 }
 
@@ -156,7 +168,7 @@ public:
     
     // プロパティ: locale
     void setLocale(const tjs_char* locale) {
-        style.localeId = FontManager::instance().registerLocale(tjsToNarrow(locale));
+        style.localeId = FontManager::instance().getLocaleId(tjsToNarrow(locale));
     }
     
     // クローン
@@ -470,121 +482,69 @@ public:
     // 描画メソッド
     // ------------------------------------------------------------------
 
-    /**
-     * 1行テキスト描画
-     */
-    tTJSVariant drawStyleText(const tjs_char* text, float x, float y,
-                               RichTextStyle* style, RichTextAppearance* appearance)
-    {
+    // RichTextコアAPIに合わせたメソッド名・引数で再定義
+
+    // 1行テキスト描画
+    tTJSVariant drawText(const tjs_char* text, float x, float y, RichTextStyle* style, RichTextAppearance* appearance) {
         if (!style || !appearance) {
             TVPThrowExceptionMessage(TJS_W("style and appearance are required"));
         }
         std::u16string u16text = tjsToU16(text);
         richtext::RectF rect = renderer_.drawText(u16text, x, y, style->style, appearance->appearance);
         renderer_.sync();
-        redraw(static_cast<int>(rect.x), static_cast<int>(rect.y),
-               static_cast<int>(rect.width) + 1, static_cast<int>(rect.height) + 1);
+        redraw(static_cast<int>(rect.x), static_cast<int>(rect.y), static_cast<int>(rect.width) + 1, static_cast<int>(rect.height) + 1);
         return toVariant(rect);
     }
 
-    /**
-     * パラグラフ描画
-     */
-    tTJSVariant drawStyleParagraph(const tjs_char* text, float x, float y, float width, float height,
-                                    int hAlign, int vAlign,
-                                    RichTextStyle* style, RichTextAppearance* appearance)
-    {
+    // パラグラフ描画
+    tTJSVariant drawParagraph(const tjs_char* text, float x, float y, float width, float height, int hAlign, int vAlign, RichTextStyle* style, RichTextAppearance* appearance) {
         if (!style || !appearance) {
             TVPThrowExceptionMessage(TJS_W("style and appearance are required"));
         }
         std::u16string u16text = tjsToU16(text);
         richtext::RectF r(x, y, width, height);
-        richtext::RectF result = renderer_.drawParagraph(
-            u16text, r,
-            static_cast<ParagraphLayout::HAlign>(hAlign),
-            static_cast<ParagraphLayout::VAlign>(vAlign),
-            style->style, appearance->appearance);
+        richtext::RectF result = renderer_.drawParagraph(u16text, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance);
         renderer_.sync();
-        redraw(static_cast<int>(result.x), static_cast<int>(result.y),
-               static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
+        redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
 
-    /**
-     * タグ付きテキスト描画
-     */
-    tTJSVariant drawStyleTaggedText(const tjs_char* text, float x, float y, float width, float height,
-                                     int hAlign, int vAlign,
-                                     RichTextStyle* defaultStyle,
-                                     RichTextAppearance* defaultAppearance)
-    {
-        if (!defaultStyle || !defaultAppearance) {
-            TVPThrowExceptionMessage(TJS_W("defaultStyle and defaultAppearance are required"));
-        }
+    // タグ付きテキスト描画（drawStyledTextに統一）
+    tTJSVariant drawStyledText(const tjs_char* text, float x, float y, float width, float height, int hAlign, int vAlign, 
+        const std::map<std::string, TextStyle>& styles,
+        const std::map<std::string, Appearance>& appearances,
+        float lineSpacing = 0.0f) {
         std::u16string u16text = tjsToU16(text);
         richtext::RectF r(x, y, width, height);
-        TagParser parser;
-        auto parseResult = parser.parse(u16text, defaultStyle->style, defaultAppearance->appearance);
-        richtext::RectF result = renderer_.drawParagraph(
-            parseResult.plainText, r,
-            static_cast<ParagraphLayout::HAlign>(hAlign),
-            static_cast<ParagraphLayout::VAlign>(vAlign),
-            parseResult.styleRuns,
-            defaultAppearance->appearance);
+        // styles/appearancesは現状TJSから渡せないのでdefaultのみ
+        // 必要ならTJS辞書→std::map変換を追加
+        richtext::RectF result = renderer_.drawStyledText(u16text, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), styles, appearances, lineSpacing);
         renderer_.sync();
-        redraw(static_cast<int>(result.x), static_cast<int>(result.y),
-               static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
+        redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
 
-    /**
-     * ParagraphLayout 描画（逐次表示対応）
-     */
-    tTJSVariant drawStyleParagraphLayout(RichTextParagraphLayout* paraLayout,
-                                          float x, float y, float width, float height,
-                                          int hAlign, int vAlign,
-                                          RichTextStyle* style,
-                                          RichTextAppearance* appearance,
-                                          int maxGlyphs = -1)
-    {
+    // ParagraphLayout描画
+    tTJSVariant drawParagraphLayout(RichTextParagraphLayout* paraLayout, float x, float y, float width, float height, int hAlign, int vAlign, RichTextStyle* style, RichTextAppearance* appearance, int maxGlyphs = -1) {
         if (!paraLayout || !style || !appearance) {
             TVPThrowExceptionMessage(TJS_W("paraLayout, style and appearance are required"));
         }
         richtext::RectF r(x, y, width, height);
-        richtext::RectF result = renderer_.drawParagraphLayout(
-            paraLayout->layout, r,
-            static_cast<ParagraphLayout::HAlign>(hAlign),
-            static_cast<ParagraphLayout::VAlign>(vAlign),
-            style->style, appearance->appearance,
-            maxGlyphs);
+        richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxGlyphs);
         renderer_.sync();
-        redraw(static_cast<int>(result.x), static_cast<int>(result.y),
-               static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
+        redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
 
-    /**
-     * 矩形描画
-     */
-    void fillStyleRect(float x, float y, float width, float height,
-                  tjs_uint32 fillColor, tjs_uint32 strokeColor = 0,
-                  float strokeWidth = 0)
-    {
+    // 矩形描画
+    void drawRect(float x, float y, float width, float height, tjs_uint32 fillColor, tjs_uint32 strokeColor = 0, float strokeWidth = 0) {
         renderer_.drawRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
         renderer_.sync();
-         redraw(static_cast<int>(x), static_cast<int>(y),
-             static_cast<int>(width) + 1, static_cast<int>(height) + 1);
+        redraw(static_cast<int>(x), static_cast<int>(y), static_cast<int>(width) + 1, static_cast<int>(height) + 1);
     }
 
-    // ------------------------------------------------------------------
-    // 計測メソッド
-    // ------------------------------------------------------------------
-
-    /**
-     * テキスト計測
-     */
-    tTJSVariant measureStyleText(const tjs_char* text, RichTextStyle* style)
-    {
+    // 1行テキスト計測
+    tTJSVariant measureText(const tjs_char* text, RichTextStyle* style) {
         if (!style) {
             TVPThrowExceptionMessage(TJS_W("style is required"));
         }
@@ -605,11 +565,8 @@ public:
         return result;
     }
 
-    /**
-     * パラグラフ計測
-     */
-    tTJSVariant measureStyleParagraph(const tjs_char* text, float maxWidth, RichTextStyle* style)
-    {
+    // パラグラフ計測
+    tTJSVariant measureParagraph(const tjs_char* text, float maxWidth, RichTextStyle* style) {
         if (!style) {
             TVPThrowExceptionMessage(TJS_W("style is required"));
         }
@@ -795,9 +752,122 @@ RichTextAppearance_addOutline_RawCallback(tTJSVariant* result, tjs_int numparams
     return TJS_S_OK;
 }
 
+
+/**
+ * 辞書からスタイル一覧取得
+ */
+class StylesGetCaller : public tTJSDispatch
+{
+public:
+	StylesGetCaller(std::map<std::string, TextStyle> &styles) : styles(styles) {}
+	virtual tjs_error TJS_INTF_METHOD FuncCall( // function invocation
+												tjs_uint32 flag,			// calling flag
+												const tjs_char * membername,// member name ( NULL for a default member )
+												tjs_uint32 *hint,			// hint for the member name (in/out)
+												tTJSVariant *result,		// result
+												tjs_int numparams,			// number of parameters
+												tTJSVariant **param,		// parameters
+												iTJSDispatch2 *objthis		// object as "this"
+												) {
+		if (numparams > 1) {
+			tTVInteger flag = param[1]->AsInteger();
+            if (!(flag & TJS_HIDDENMEMBER)) {
+                RichTextStyle* style = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[2]->AsObjectNoAddRef());
+                if (style) {
+                    std::string utf8name = tjsToNarrow(param[0]->GetString());
+                    styles[utf8name] = style->style;
+                }
+			}
+		}
+		if (result) {
+			*result = true;
+		}
+		return TJS_S_OK;
+	}
+private:
+    std::map<std::string, TextStyle> &styles;
+};
+
+class AppearancesGetCaller : public tTJSDispatch
+{
+public:
+    AppearancesGetCaller(std::map<std::string, Appearance> &appearances) : appearances(appearances) {}
+    virtual tjs_error TJS_INTF_METHOD FuncCall( // function invocation
+                                                tjs_uint32 flag,			// calling flag
+                                                const tjs_char * membername,// member name ( NULL for a default member )
+                                                tjs_uint32 *hint,			// hint for the member name (in/out)
+                                                tTJSVariant *result,		// result
+                                                tjs_int numparams,			// number of parameters
+                                                tTJSVariant **param,		// parameters
+                                                iTJSDispatch2 *objthis		// object as "this"
+                                                ) {
+        if (numparams > 1) {
+            tTVInteger flag = param[1]->AsInteger();
+            if (!(flag & TJS_HIDDENMEMBER)) {
+                RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[2]->AsObjectNoAddRef());
+                if (appearance) {
+                    std::string utf8name = tjsToNarrow(param[0]->GetString());
+                    appearances[utf8name] = appearance->appearance;
+                }
+            }
+        }
+        if (result) {
+            *result = true;
+        }
+        return TJS_S_OK;
+    }
+private:
+    std::map<std::string, Appearance> &appearances;
+};
+
+// drawStyledText RawCallback（省略可能lineSpacing対応）
 static tjs_error TJS_INTF_METHOD
-LayerExRichText_drawStyleParagraphLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                                     tTJSVariant** param, LayerExRichText* objthis)
+LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                           tTJSVariant** param, LayerExRichText* objthis)
+{
+    if (numparams < 9) return TJS_E_BADPARAMCOUNT;
+    ttstr text = static_cast<ttstr>(*param[0]);
+    float x = static_cast<float>(param[1]->AsReal());
+    float y = static_cast<float>(param[2]->AsReal());
+    float width = static_cast<float>(param[3]->AsReal());
+    float height = static_cast<float>(param[4]->AsReal());
+    int hAlign = static_cast<int>(param[5]->AsInteger());
+    int vAlign = static_cast<int>(param[6]->AsInteger());
+
+    // 単発か辞書で渡す
+    std::map<std::string, TextStyle> styles;
+    RichTextStyle* defaultStyle = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[7]->AsObjectNoAddRef());
+    if (defaultStyle) {
+        styles["default"] = defaultStyle->style;
+    } else {
+		StylesGetCaller *caller = new StylesGetCaller(styles);
+		tTJSVariantClosure closure(caller);
+        param[7]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+    }
+
+    // 単発か辞書で渡す
+    std::map<std::string, Appearance> appearances;
+    RichTextAppearance* defaultAppearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[8]->AsObjectNoAddRef());
+    if (defaultAppearance) {
+        appearances["default"] = defaultAppearance->appearance;
+    } else {
+        AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
+        tTJSVariantClosure closure(caller);
+        param[8]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+    }
+    float lineSpacing = (numparams >= 10) ? static_cast<float>(param[9]->AsReal()) : 0.0f;
+
+    if (result) {
+        *result = objthis->drawStyledText(text.c_str(), x, y, width, height, hAlign, vAlign, styles, appearances, lineSpacing);
+    } else {
+        objthis->drawStyledText(text.c_str(), x, y, width, height, hAlign, vAlign, styles, appearances, lineSpacing);
+    }
+    return TJS_S_OK;
+}
+
+static tjs_error TJS_INTF_METHOD
+LayerExRichText_drawParagraphLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                                tTJSVariant** param, LayerExRichText* objthis)
 {
     if (numparams < 9) return TJS_E_BADPARAMCOUNT;
     RichTextParagraphLayout* paraLayout = ncbInstanceAdaptor<RichTextParagraphLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
@@ -812,29 +882,29 @@ LayerExRichText_drawStyleParagraphLayout_RawCallback(tTJSVariant* result, tjs_in
     int maxGlyphs = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
 
     if (result) {
-        *result = objthis->drawStyleParagraphLayout(
+        *result = objthis->drawParagraphLayout(
             paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
     } else {
-        objthis->drawStyleParagraphLayout(
+        objthis->drawParagraphLayout(
             paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
     }
     return TJS_S_OK;
 }
 
 static tjs_error TJS_INTF_METHOD
-LayerExRichText_fillStyleRect_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                          tTJSVariant** param, LayerExRichText* objthis)
+LayerExRichText_drawRect_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                     tTJSVariant** param, LayerExRichText* objthis)
 {
-    if (numparams < 5) return TJS_E_BADPARAMCOUNT;
+    if (numparams < 4) return TJS_E_BADPARAMCOUNT;
     float x = static_cast<float>(param[0]->AsReal());
     float y = static_cast<float>(param[1]->AsReal());
     float width = static_cast<float>(param[2]->AsReal());
     float height = static_cast<float>(param[3]->AsReal());
-    tjs_uint32 fillColor = static_cast<tjs_uint32>(param[4]->AsInteger());
+    tjs_uint32 fillColor = (numparams >= 5) ? static_cast<tjs_uint32>(param[4]->AsInteger()) : 0;
     tjs_uint32 strokeColor = (numparams >= 6) ? static_cast<tjs_uint32>(param[5]->AsInteger()) : 0;
     float strokeWidth = (numparams >= 7) ? static_cast<float>(param[6]->AsReal()) : 0;
 
-    objthis->fillStyleRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
+    objthis->drawRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
     return TJS_S_OK;
 }
 
@@ -1043,16 +1113,17 @@ NCB_GET_INSTANCE_HOOK(LayerExRichText)
 
 // Layer 拡張としてアタッチ
 NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
+
     // 描画メソッド
-    NCB_METHOD(drawStyleText);
-    NCB_METHOD(drawStyleParagraph);
-    NCB_METHOD(drawStyleTaggedText);
-    NCB_METHOD_RAW_CALLBACK(drawStyleParagraphLayout, LayerExRichText_drawStyleParagraphLayout_RawCallback, 0);
-    NCB_METHOD_RAW_CALLBACK(fillStyleRect, LayerExRichText_fillStyleRect_RawCallback, 0);
+    NCB_METHOD_DIFFER(drawTextEx, drawText);
+    NCB_METHOD(drawParagraph);
+    NCB_METHOD_RAW_CALLBACK(drawStyledText, LayerExRichText_drawStyledText_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(drawParagraphLayout, LayerExRichText_drawParagraphLayout_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(drawRectEx, LayerExRichText_drawRect_RawCallback, 0);
 
     // 計測メソッド
-    NCB_METHOD(measureStyleText);
-    NCB_METHOD(measureStyleParagraph);
+    NCB_METHOD(measureText);
+    NCB_METHOD(measureParagraph);
 
     // キャッシュ制御
     NCB_PROPERTY(useCache, getUseCache, setUseCache);
