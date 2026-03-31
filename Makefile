@@ -62,3 +62,6 @@ install:
 # テスト用 Noto フォントを Google Fonts からダウンロード
 fontdata:
 	python3 data/download_fonts.py
+
+test:
+	./krkrz64.exe -readencoding=UTF-8
