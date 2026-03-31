@@ -419,6 +419,157 @@ NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::VAlign);
 NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::BreakStrategy);
 NCB_TYPECONV_CAST_INTEGER(minikin::Bidi);
 
+// 前方宣言
+class RichTextStyledLayout;
+
+// ============================================================================
+// TJSラッパークラス: RichTextTextureAtlas (TextureAtlas のラッパー)
+// ============================================================================
+
+/**
+ * レイヤーをテクスチャとして使う ITexture 実装
+ */
+class LayerTexture : public ITexture {
+public:
+    LayerTexture(iTJSDispatch2* layer) : layer_(layer) {
+        updateInfo();
+    }
+
+    int getWidth() const override { return width_; }
+    int getHeight() const override { return height_; }
+
+    void update(int x, int y, int width, int height,
+                const uint32_t* pixels, int pitch) override {
+        // レイヤーバッファ情報を更新
+        updateInfo();
+        if (!buffer_) return;
+
+        // ピクセルコピー
+        for (int row = 0; row < height; ++row) {
+            int dstY = y + row;
+            if (dstY < 0 || dstY >= height_) continue;
+            const uint32_t* srcRow = reinterpret_cast<const uint32_t*>(
+                reinterpret_cast<const uint8_t*>(pixels) + row * pitch);
+            uint32_t* dstRow = reinterpret_cast<uint32_t*>(
+                reinterpret_cast<uint8_t*>(buffer_) + dstY * pitch_);
+            for (int col = 0; col < width; ++col) {
+                int dstX = x + col;
+                if (dstX < 0 || dstX >= width_) continue;
+                dstRow[dstX] = srcRow[col];
+            }
+        }
+    }
+
+private:
+    void updateInfo() {
+        tTJSVariant val;
+        layer_->PropGet(0, TJS_W("imageWidth"), nullptr, &val, layer_);
+        width_ = static_cast<int>(val);
+        layer_->PropGet(0, TJS_W("imageHeight"), nullptr, &val, layer_);
+        height_ = static_cast<int>(val);
+        layer_->PropGet(0, TJS_W("mainImageBufferForWrite"), nullptr, &val, layer_);
+        buffer_ = reinterpret_cast<uint32_t*>(static_cast<tjs_intptr_t>(val));
+        layer_->PropGet(0, TJS_W("mainImageBufferPitch"), nullptr, &val, layer_);
+        pitch_ = static_cast<int>(val);
+    }
+
+    iTJSDispatch2* layer_;
+    int width_ = 0;
+    int height_ = 0;
+    uint32_t* buffer_ = nullptr;
+    int pitch_ = 0;
+};
+
+class RichTextTextureAtlas {
+public:
+    RichTextTextureAtlas(tTJSVariant layer) {
+        iTJSDispatch2* layerObj = layer.AsObjectNoAddRef();
+        if (!layerObj || layerObj->IsInstanceOf(0, NULL, NULL, TJS_W("Layer"), layerObj) != TJS_S_TRUE) {
+            TVPThrowExceptionMessage(TJS_W("argument must be a Layer"));
+        }
+        // レイヤーオブジェクトを参照保持
+        layerObj_ = layerObj;
+        layerObj_->AddRef();
+        texture_ = std::make_unique<LayerTexture>(layerObj);
+        atlas_ = std::make_unique<TextureAtlas>(texture_.get());
+    }
+
+    ~RichTextTextureAtlas() {
+        atlas_.reset();
+        texture_.reset();
+        if (layerObj_) {
+            layerObj_->Release();
+        }
+    }
+
+    void clear() { atlas_->clear(); }
+
+    bool addLayout(RichTextLayout* layout, RichTextAppearance* appearance) {
+        if (!layout || !appearance) {
+            TVPThrowExceptionMessage(TJS_W("layout and appearance are required"));
+        }
+        return atlas_->addLayout(layout->layout_, appearance->appearance);
+    }
+
+    bool addParagraphLayout(RichTextParagraphLayout* para, RichTextStyle* style, RichTextAppearance* appearance) {
+        if (!para || !style || !appearance) {
+            TVPThrowExceptionMessage(TJS_W("paraLayout, style and appearance are required"));
+        }
+        return atlas_->addParagraphLayout(para->layout_, style->style, appearance->appearance);
+    }
+
+    bool addStyledLayout(RichTextStyledLayout* layout); // 実装は RichTextStyledLayout 定義後
+
+    void commit() {
+        atlas_->commit();
+        // レイヤーに更新通知
+        tTJSVariant val;
+        layerObj_->PropGet(0, TJS_W("imageWidth"), nullptr, &val, layerObj_);
+        int w = static_cast<int>(val);
+        layerObj_->PropGet(0, TJS_W("imageHeight"), nullptr, &val, layerObj_);
+        int h = static_cast<int>(val);
+        tTJSVariant vars[4] = { 0, 0, w, h };
+        tTJSVariant* varsp[4] = { vars, vars + 1, vars + 2, vars + 3 };
+        tTJSVariant result;
+        layerObj_->FuncCall(0, TJS_W("update"), nullptr, &result, 4, varsp, layerObj_);
+    }
+
+    /**
+     * getCopyRects を TJS 配列として返す共通ヘルパー
+     */
+    static tTJSVariant copyRectsToVariant(const std::vector<richtext::CopyRect>& rects) {
+        iTJSDispatch2* arr = TJSCreateArrayObject();
+        static tjs_uint32 pushHint;
+        for (const auto& r : rects) {
+            iTJSDispatch2* dict = TJSCreateDictionaryObject();
+            tTJSVariant v;
+            v = r.srcX;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("srcX"), nullptr, &v, dict);
+            v = r.srcY;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("srcY"), nullptr, &v, dict);
+            v = r.srcWidth;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("srcWidth"), nullptr, &v, dict);
+            v = r.srcHeight; dict->PropSet(TJS_MEMBERENSURE, TJS_W("srcHeight"), nullptr, &v, dict);
+            v = r.dstX;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("dstX"), nullptr, &v, dict);
+            v = r.dstY;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("dstY"), nullptr, &v, dict);
+            v = r.displayIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("displayIndex"), nullptr, &v, dict);
+            tTJSVariant dictVar(dict, dict);
+            dict->Release();
+            tTJSVariant* p = &dictVar;
+            arr->FuncCall(0, TJS_W("push"), &pushHint, nullptr, 1, &p, arr);
+        }
+        tTJSVariant result(arr, arr);
+        arr->Release();
+        return result;
+    }
+
+    // getCopyRects は RawCallback で実装（オーバーロード対応のため後述）
+
+    TextureAtlas& getAtlas() { return *atlas_; }
+
+private:
+    iTJSDispatch2* layerObj_;
+    std::unique_ptr<LayerTexture> texture_;
+    std::unique_ptr<TextureAtlas> atlas_;
+};
+
 // ============================================================================
 // TJSラッパークラス: RichTextStyledLayout (StyledLayout のラッパー)
 // ============================================================================
@@ -447,6 +598,14 @@ public:
     // isValid
     bool getIsValid() const { return layout_.isValid(); }
 };
+
+// RichTextTextureAtlas::addStyledLayout の実装（RichTextStyledLayout 定義後）
+bool RichTextTextureAtlas::addStyledLayout(RichTextStyledLayout* layout) {
+    if (!layout) {
+        TVPThrowExceptionMessage(TJS_W("styledLayout is required"));
+    }
+    return atlas_->addStyledLayout(layout->layout_);
+}
 
 // ============================================================================
 // レイヤー拡張: LayerExRichText
@@ -829,6 +988,38 @@ private:
     std::map<std::string, Appearance> &appearances;
 };
 
+/**
+ * TJS引数から styles マップを構築（単体 Style or 辞書）
+ */
+static std::map<std::string, TextStyle> parseStyles(tTJSVariant* param) {
+    std::map<std::string, TextStyle> styles;
+    RichTextStyle* single = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param->AsObjectNoAddRef());
+    if (single) {
+        styles["default"] = single->style;
+    } else {
+        StylesGetCaller *caller = new StylesGetCaller(styles);
+        tTJSVariantClosure closure(caller);
+        param->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
+    }
+    return styles;
+}
+
+/**
+ * TJS引数から appearances マップを構築（単体 Appearance or 辞書）
+ */
+static std::map<std::string, Appearance> parseAppearances(tTJSVariant* param) {
+    std::map<std::string, Appearance> appearances;
+    RichTextAppearance* single = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param->AsObjectNoAddRef());
+    if (single) {
+        appearances["default"] = single->appearance;
+    } else {
+        AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
+        tTJSVariantClosure closure(caller);
+        param->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
+    }
+    return appearances;
+}
+
 // drawTextLayout RawCallback（省略可能maxGlyphs対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
@@ -863,27 +1054,8 @@ LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparam
     int hAlign = static_cast<int>(param[5]->AsInteger());
     int vAlign = static_cast<int>(param[6]->AsInteger());
 
-    // 単発か辞書で渡す
-    std::map<std::string, TextStyle> styles;
-    RichTextStyle* defaultStyle = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[7]->AsObjectNoAddRef());
-    if (defaultStyle) {
-        styles["default"] = defaultStyle->style;
-    } else {
-		StylesGetCaller *caller = new StylesGetCaller(styles);
-		tTJSVariantClosure closure(caller);
-        param[7]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
-    }
-
-    // 単発か辞書で渡す
-    std::map<std::string, Appearance> appearances;
-    RichTextAppearance* defaultAppearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[8]->AsObjectNoAddRef());
-    if (defaultAppearance) {
-        appearances["default"] = defaultAppearance->appearance;
-    } else {
-        AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
-        tTJSVariantClosure closure(caller);
-        param[8]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
-    }
+    auto styles = parseStyles(param[7]);
+    auto appearances = parseAppearances(param[8]);
     float lineSpacing = (numparams >= 10) ? static_cast<float>(param[9]->AsReal()) : 0.0f;
 
     if (result) {
@@ -932,27 +1104,8 @@ RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
     int hAlign = static_cast<int>(param[3]->AsInteger());
     int vAlign = static_cast<int>(param[4]->AsInteger());
 
-    // styles: RichTextStyle単体 or 辞書
-    std::map<std::string, TextStyle> styles;
-    RichTextStyle* defaultStyle = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[5]->AsObjectNoAddRef());
-    if (defaultStyle) {
-        styles["default"] = defaultStyle->style;
-    } else {
-        StylesGetCaller *caller = new StylesGetCaller(styles);
-        tTJSVariantClosure closure(caller);
-        param[5]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
-    }
-
-    // appearances: RichTextAppearance単体 or 辞書
-    std::map<std::string, Appearance> appearances;
-    RichTextAppearance* defaultAppearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[6]->AsObjectNoAddRef());
-    if (defaultAppearance) {
-        appearances["default"] = defaultAppearance->appearance;
-    } else {
-        AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
-        tTJSVariantClosure closure(caller);
-        param[6]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
-    }
+    auto styles = parseStyles(param[5]);
+    auto appearances = parseAppearances(param[6]);
 
     float lineSpacing = (numparams >= 8) ? static_cast<float>(param[7]->AsReal()) : 0.0f;
 
@@ -961,6 +1114,74 @@ RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
                            static_cast<ParagraphLayout::VAlign>(vAlign),
                            styles, appearances, lineSpacing);
     return TJS_S_OK;
+}
+
+// TextureAtlas::getCopyRects RawCallback
+// 引数パターンで 3 つのオーバーロードを区別:
+//   (Layout, x, y, Appearance [, maxGlyphs])          → TextLayout 版
+//   (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxGlyphs]) → Paragraph 版
+//   (StyledLayout, x, y [, maxGlyphs])                → StyledLayout 版
+static tjs_error TJS_INTF_METHOD
+RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                              tTJSVariant** param, RichTextTextureAtlas* objthis)
+{
+    if (numparams < 3) return TJS_E_BADPARAMCOUNT;
+
+    // StyledLayout 版: (StyledLayout, x, y [, maxGlyphs])
+    RichTextStyledLayout* styledLayout = ncbInstanceAdaptor<RichTextStyledLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    if (styledLayout) {
+        float x = static_cast<float>(param[1]->AsReal());
+        float y = static_cast<float>(param[2]->AsReal());
+        int maxGlyphs = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
+        auto rects = objthis->getAtlas().getCopyRects(styledLayout->layout_, x, y, maxGlyphs);
+        if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
+        return TJS_S_OK;
+    }
+
+    // TextLayout 版: (Layout, x, y, Appearance [, maxGlyphs])
+    RichTextLayout* textLayout = ncbInstanceAdaptor<RichTextLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    if (textLayout) {
+        if (numparams < 4) return TJS_E_BADPARAMCOUNT;
+        float x = static_cast<float>(param[1]->AsReal());
+        float y = static_cast<float>(param[2]->AsReal());
+        RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[3]->AsObjectNoAddRef());
+        if (!appearance) {
+            TVPThrowExceptionMessage(TJS_W("appearance is required"));
+        }
+        int maxGlyphs = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
+        auto rects = objthis->getAtlas().getCopyRects(textLayout->layout_, x, y, appearance->appearance, maxGlyphs);
+        if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
+        return TJS_S_OK;
+    }
+
+    // ParagraphLayout 版: (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxGlyphs])
+    RichTextParagraphLayout* paraLayout = ncbInstanceAdaptor<RichTextParagraphLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    if (paraLayout) {
+        if (numparams < 9) return TJS_E_BADPARAMCOUNT;
+        float x = static_cast<float>(param[1]->AsReal());
+        float y = static_cast<float>(param[2]->AsReal());
+        float w = static_cast<float>(param[3]->AsReal());
+        float h = static_cast<float>(param[4]->AsReal());
+        int hAlign = static_cast<int>(param[5]->AsInteger());
+        int vAlign = static_cast<int>(param[6]->AsInteger());
+        RichTextStyle* style = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[7]->AsObjectNoAddRef());
+        RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[8]->AsObjectNoAddRef());
+        if (!style || !appearance) {
+            TVPThrowExceptionMessage(TJS_W("style and appearance are required"));
+        }
+        int maxGlyphs = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
+        richtext::RectF rect(x, y, w, h);
+        auto rects = objthis->getAtlas().getCopyRects(
+            paraLayout->layout_, rect,
+            static_cast<ParagraphLayout::HAlign>(hAlign),
+            static_cast<ParagraphLayout::VAlign>(vAlign),
+            style->style, appearance->appearance, maxGlyphs);
+        if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
+        return TJS_S_OK;
+    }
+
+    TVPThrowExceptionMessage(TJS_W("first argument must be Layout, ParagraphLayout, or StyledLayout"));
+    return TJS_E_INVALIDPARAM;
 }
 
 // drawStyledLayout RawCallback（省略可能maxGlyphs対応）
@@ -1158,6 +1379,17 @@ NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
     NCB_PROPERTY_RO(isValid, getIsValid);
 };
 
+// RichTextTextureAtlas サブクラス
+NCB_REGISTER_SUBCLASS(RichTextTextureAtlas) {
+    NCB_CONSTRUCTOR((tTJSVariant));
+    NCB_METHOD(clear);
+    NCB_METHOD(addLayout);
+    NCB_METHOD(addParagraphLayout);
+    NCB_METHOD(addStyledLayout);
+    NCB_METHOD(commit);
+    NCB_METHOD_RAW_CALLBACK(getCopyRects, RichTextTextureAtlas_getCopyRects_RawCallback, 0);
+};
+
 // RichText クラス (静的メソッドと定数)
 NCB_REGISTER_CLASS(RichText)
 {
@@ -1197,6 +1429,7 @@ NCB_REGISTER_CLASS(RichText)
     NCB_SUBCLASS(Layout, RichTextLayout);
     NCB_SUBCLASS(ParagraphLayout, RichTextParagraphLayout);
     NCB_SUBCLASS(StyledLayout, RichTextStyledLayout);
+    NCB_SUBCLASS(TextureAtlas, RichTextTextureAtlas);
 }
 
 // LayerExRichText インスタンスフック

@@ -185,9 +185,10 @@ class MainWindow extends Window {
             sample11_FontSizes,
             sample12_EmojiComparison,
             sample13_VariableFontWeight,
-            sample14_MixedLanguages
+            sample14_MixedLanguages,
+            sample15_TextureAtlas
         ];
-        
+
         sampleNames = [
             "[1] Basic LTR text",
             "[2] Bold / Shadow",
@@ -202,7 +203,8 @@ class MainWindow extends Window {
             "[11] Various font sizes",
             "[12] Color vs Monochrome emoji",
             "[13] Variable Font weight",
-            "[14] Mixed languages + emoji"
+            "[14] Mixed languages + emoji",
+            "[15] TextureAtlas"
         ];
     }
     
@@ -671,6 +673,117 @@ class MainWindow extends Window {
             multiStyle, blackFill);
     }
     
+    //==========================================================================
+    // サンプル15: TextureAtlas
+    //==========================================================================
+    function sample15_TextureAtlas(startY) {
+        var y = startY;
+
+        drawLabel("TextureAtlas — グリフをアトラスレイヤーに事前レンダリングしてコピー", LEFT, y);
+        y += 20;
+
+        // アトラス用レイヤー（非表示、テクスチャとして使用）
+        var atlasLayer = new Layer(this, layer);
+        atlasLayer.setImageSize(512, 512);
+        atlasLayer.fillRect(0, 0, 512, 512, 0x00000000);
+        atlasLayer.visible = false;
+
+        // TextureAtlas 作成
+        var atlas = new RichText.TextureAtlas(atlasLayer);
+
+        // --- StyledLayout でテスト ---
+        var sl = new RichText.StyledLayout();
+        var tagStyle = baseStyle.clone();
+        tagStyle.fontSize = 28;
+
+        var boldStyle = tagStyle.clone();
+        boldStyle.fontWeight = 700;
+
+        var styles = %[ "default", tagStyle, "bold", boldStyle ];
+        var apps = %[ "default", blueFill, "bold", redFill ];
+
+        sl.layout(
+            "TextureAtlasサンプル: <style name='bold'>太字</style>と通常テキスト 😀🎉\n" +
+            "グリフは<style name='bold'>重複排除</style>されてテクスチャに格納されます。",
+            PARA_W, 200,
+            RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+            styles, apps
+        );
+
+        // アトラスにグリフ追加 → テクスチャに書き込み
+        atlas.addStyledLayout(sl);
+        atlas.commit();
+
+        // コピー矩形を取得して描画
+        drawLabel("getCopyRects → copyRect で転送（全グリフ）", LEFT, y);
+        y += 18;
+
+        var rects = atlas.getCopyRects(sl, LEFT, y);
+        for (var i = 0; i < rects.count; i++) {
+            var r = rects[i];
+            layer.operateRect(
+                (int)r.dstX, (int)r.dstY,
+                atlasLayer,
+                r.srcX, r.srcY, r.srcWidth, r.srcHeight,
+                omAlpha
+            );
+        }
+
+        y += 90;
+
+        // --- 逐次表示デモ（maxGlyphs 指定） ---
+        drawLabel("逐次表示デモ（maxGlyphs=15）", LEFT, y);
+        y += 18;
+
+        var partialRects = atlas.getCopyRects(sl, LEFT, y, 20);
+        for (var i = 0; i < partialRects.count; i++) {
+            var r = partialRects[i];
+            layer.operateRect(
+                (int)r.dstX, (int)r.dstY,
+                atlasLayer,
+                r.srcX, r.srcY, r.srcWidth, r.srcHeight,
+                omAlpha
+            );
+        }
+
+        y += 90;
+
+        // --- ParagraphLayout でテスト ---
+        drawLabel("ParagraphLayout 版アトラス描画", LEFT, y);
+        y += 18;
+
+        var paraStyle = baseStyle.clone();
+        paraStyle.fontSize = 22;
+
+        var paraApp = new RichText.Appearance();
+        paraApp.addStroke(0xFF000000, 2);
+        paraApp.addFill(0xFFFFFFFF);
+
+        var pl = new RichText.ParagraphLayout();
+        pl.layout("パラグラフのテクスチャアトラス描画テストです。自動改行も正しく処理されます。", PARA_W, paraStyle);
+
+        atlas.addParagraphLayout(pl, paraStyle, paraApp);
+        atlas.commit();
+
+        drawBorder(LEFT, y, PARA_W, 80, 0xFFDD4444);
+        var paraRects = atlas.getCopyRects(pl, LEFT + 4, y + 4, PARA_W - 8, 72,
+            RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+            paraStyle, paraApp);
+        for (var i = 0; i < paraRects.count; i++) {
+            var r = paraRects[i];
+            layer.operateRect(
+                (int)r.dstX, (int)r.dstY,
+                atlasLayer,
+                r.srcX, r.srcY, r.srcWidth, r.srcHeight,
+                omAlpha
+            );
+        }
+
+        y += 90;
+
+        invalidate atlasLayer;
+    }
+
     //--------------------------------------------------------------------------
     // キー入力処理
     //--------------------------------------------------------------------------

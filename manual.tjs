@@ -516,6 +516,121 @@ class RichText {
 	}
 
 	// =========================================================================
+	// TextureAtlas クラス
+	// =========================================================================
+
+	/**
+	 * テクスチャアトラスクラス
+	 * @description
+	 * グリフを事前レンダリングしてレイヤー（テクスチャ）に格納し、
+	 * コピー矩形配列で表示順に転送するためのクラスです。
+	 * 同一グリフは重複排除され、効率的なテクスチャ利用が可能です。
+	 *
+	 * コンストラクタにレイヤーを渡すと、そのレイヤーをテクスチャとして使用します。
+	 *
+	 * 使用フロー:
+	 * 1. レイヤーを渡してアトラスを作成
+	 * 2. addLayout / addParagraphLayout / addStyledLayout でグリフを追加
+	 * 3. commit() でテクスチャに書き込み
+	 * 4. getCopyRects() でコピー矩形配列を取得
+	 * 5. コピー矩形に基づいてアトラスレイヤーから表示先にコピー
+	 *
+	 * 使用例:
+	 *   var atlasLayer = new Layer(window, window.primaryLayer);
+	 *   atlasLayer.setImageSize(1024, 1024);
+	 *   var atlas = new RichText.TextureAtlas(atlasLayer);
+	 *
+	 *   var sl = new RichText.StyledLayout();
+	 *   sl.layout(text, 400, 300, RichText.HALIGN_LEFT, RichText.VALIGN_TOP, style, app);
+	 *   atlas.addStyledLayout(sl);
+	 *   atlas.commit();
+	 *
+	 *   var rects = atlas.getCopyRects(sl, 10, 10);
+	 *   for (var i = 0; i < rects.count; i++) {
+	 *       var r = rects[i];
+	 *       // r.srcX, r.srcY, r.srcWidth, r.srcHeight: アトラスレイヤー内のソース矩形
+	 *       // r.dstX, r.dstY: 表示先の座標
+	 *       // r.displayIndex: 表示順序
+	 *       targetLayer.copyRect(r.dstX, r.dstY, atlasLayer,
+	 *           r.srcX, r.srcY, r.srcWidth, r.srcHeight);
+	 *   }
+	 */
+	class TextureAtlas {
+
+		/**
+		 * コンストラクタ
+		 * @param layer テクスチャとして使用するレイヤー
+		 */
+		function TextureAtlas(layer);
+
+		/**
+		 * アトラスをクリア（全グリフを削除）
+		 */
+		function clear();
+
+		/**
+		 * TextLayout のグリフをアトラスに追加
+		 * @param layout RichText.Layout オブジェクト
+		 * @param appearance RichText.Appearance オブジェクト
+		 * @return 成功時 true
+		 */
+		function addLayout(layout, appearance);
+
+		/**
+		 * ParagraphLayout のグリフをアトラスに追加
+		 * @param paraLayout RichText.ParagraphLayout オブジェクト
+		 * @param style RichText.Style オブジェクト
+		 * @param appearance RichText.Appearance オブジェクト
+		 * @return 成功時 true
+		 */
+		function addParagraphLayout(paraLayout, style, appearance);
+
+		/**
+		 * StyledLayout のグリフをアトラスに追加
+		 * @param styledLayout RichText.StyledLayout オブジェクト
+		 * @return 成功時 true
+		 */
+		function addStyledLayout(styledLayout);
+
+		/**
+		 * アトラスをテクスチャ（レイヤー）に書き込み
+		 * @description
+		 * addLayout / addParagraphLayout / addStyledLayout で追加した
+		 * グリフをレイヤーにレンダリングします。
+		 */
+		function commit();
+
+		/**
+		 * 表示用コピー矩形配列を取得
+		 * @description
+		 * 3つのオーバーロードがあります:
+		 *
+		 * 1) getCopyRects(layout, x, y, appearance, maxGlyphs=-1)
+		 *    - layout: RichText.Layout
+		 *    - x, y: 描画位置
+		 *    - appearance: RichText.Appearance
+		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *
+		 * 2) getCopyRects(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs=-1)
+		 *    - paraLayout: RichText.ParagraphLayout
+		 *    - x, y, width, height: 描画領域
+		 *    - hAlign, vAlign: アライン
+		 *    - style: RichText.Style
+		 *    - appearance: RichText.Appearance
+		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *
+		 * 3) getCopyRects(styledLayout, x, y, maxGlyphs=-1)
+		 *    - styledLayout: RichText.StyledLayout
+		 *    - x, y: 描画位置
+		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *
+		 * @return コピー矩形の配列。各要素は辞書:
+		 *   %[srcX, srcY, srcWidth, srcHeight, dstX, dstY, displayIndex]
+		 */
+		function getCopyRects(/* overloaded */);
+	}
+
+	// =========================================================================
 	// StyledLayout クラス
 	// =========================================================================
 
