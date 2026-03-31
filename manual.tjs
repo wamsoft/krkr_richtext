@@ -2,10 +2,10 @@
  * 擬似コードによるマニュアル
  *
  * richtext - 吉里吉里用リッチテキストレンダリングプラグイン
- * 
+ *
  * minikin (Android テキストレイアウトエンジン) と thorvg を使用した
  * 高品質なテキストレンダリングを提供します。
- * 
+ *
  * 特徴:
  * - 複数フォントのフォールバック対応
  * - 多言語対応（RTL含む）
@@ -13,19 +13,47 @@
  * - HTMLライクなタグによるスタイル指定
  * - 縁取り・影などの装飾効果
  * - パラグラフレイアウト（自動改行）
- * - 逐次表示対応（ParagraphLayout使用）
+ * - 逐次表示対応（ParagraphLayout / StyledLayout 使用）
  */
 class RichText {
 
+	// =========================================================================
 	// 水平アライン定数
-	const HALIGN_LEFT   = 0;  // 左揃え
-	const HALIGN_CENTER = 1;  // 中央揃え
-	const HALIGN_RIGHT  = 2;  // 右揃え
+	// =========================================================================
 
+	const HALIGN_LEFT    = 0;  // 左揃え
+	const HALIGN_CENTER  = 1;  // 中央揃え
+	const HALIGN_RIGHT   = 2;  // 右揃え
+	const HALIGN_JUSTIFY = 3;  // 両端揃え
+
+	// =========================================================================
 	// 垂直アライン定数
+	// =========================================================================
+
 	const VALIGN_TOP    = 0;  // 上揃え
 	const VALIGN_MIDDLE = 1;  // 中央揃え
 	const VALIGN_BOTTOM = 2;  // 下揃え
+
+	// =========================================================================
+	// 行分割戦略定数
+	// =========================================================================
+
+	const BREAK_GREEDY       = 0;  // 高速（各改行候補で即座に判断）
+	const BREAK_HIGH_QUALITY = 1;  // 高品質（Knuth-Plassアルゴリズム）
+	const BREAK_BALANCED     = 2;  // バランス（各行の長さを均等に）
+
+	// =========================================================================
+	// 双方向テキスト定数
+	// =========================================================================
+
+	const BIDI_LTR         = 0;  // 左から右
+	const BIDI_RTL         = 1;  // 右から左
+	const BIDI_DEFAULT_LTR = 2;  // デフォルト左から右
+	const BIDI_DEFAULT_RTL = 3;  // デフォルト右から左
+
+	// =========================================================================
+	// フォント管理（静的メソッド）
+	// =========================================================================
 
 	/**
 	 * フォントファイルを登録 (static メソッド)
@@ -41,11 +69,48 @@ class RichText {
 	static function registerFont(path, name, index=0);
 
 	/**
+	 * バリアブルフォントを登録 (static メソッド)
+	 * @param path フォントファイルパス
+	 * @param name 登録名
+	 * @param weight フォントウェイト（100-900）
+	 * @param italic イタリック（省略時: false）
+	 * @param index フォントインデックス（TTC の場合、省略時: 0）
+	 * @return 成功した場合 true
+	 * @description
+	 * wght 軸を持つバリアブルフォントを特定のウェイトで登録します。
+	 * 同じフォントファイルから異なるウェイトで複数回登録できます。
+	 * 使用例:
+	 *   RichText.registerVariableFont("fonts/NotoSansJP-VF.ttf", "NotoSansJP-Regular", 400);
+	 *   RichText.registerVariableFont("fonts/NotoSansJP-VF.ttf", "NotoSansJP-Bold", 700);
+	 */
+	static function registerVariableFont(path, name, weight, italic=false, index=0);
+
+	/**
 	 * フォント登録を解除 (static メソッド)
 	 * @param name 登録名
 	 * @return 成功した場合 true
 	 */
 	static function unregisterFont(name);
+
+	/**
+	 * 名前付きフォントコレクションを登録 (static メソッド)
+	 * @param collectionName コレクション名
+	 * @param fontNames フォント名の配列（優先度順）
+	 * @return 成功した場合 true
+	 * @description
+	 * 複数のフォントをまとめて名前を付けて登録します。
+	 * Style.setFonts() で配列を渡す代わりに、コレクション名で参照できます。
+	 * 使用例:
+	 *   RichText.registerCollection("myFonts", ["NotoSansJP", "NotoEmoji"]);
+	 */
+	static function registerCollection(collectionName, fontNames);
+
+	/**
+	 * 名前付きフォントコレクションを解除 (static メソッド)
+	 * @param collectionName コレクション名
+	 * @return 成功した場合 true
+	 */
+	static function unregisterCollection(collectionName);
 
 	/**
 	 * ロケールを登録 (static メソッド)
@@ -58,6 +123,10 @@ class RichText {
 	 *   style.setLocale("ja_JP");
 	 */
 	static function registerLocale(locale);
+
+	// =========================================================================
+	// Style クラス
+	// =========================================================================
 
 	/**
 	 * テキストスタイルクラス
@@ -148,7 +217,28 @@ class RichText {
 		 * デフォルト: 0
 		 */
 		property skewX;
+
+		/**
+		 * フォント幅（バリアブルフォントの wdth 軸、パーセント）
+		 * @description
+		 * 100 = 通常幅。50 = 半分の幅、200 = 2倍の幅。
+		 * バリアブルフォントの wdth 軸に対応しているフォントでのみ有効。
+		 * デフォルト: 100
+		 */
+		property fontWidth;
+
+		/**
+		 * 双方向テキスト制御
+		 * @description
+		 * RichText.BIDI_LTR / BIDI_RTL / BIDI_DEFAULT_LTR / BIDI_DEFAULT_RTL
+		 * デフォルト: BIDI_DEFAULT_LTR
+		 */
+		property bidi;
 	}
+
+	// =========================================================================
+	// Appearance クラス
+	// =========================================================================
 
 	/**
 	 * 描画外観クラス
@@ -156,7 +246,7 @@ class RichText {
 	 * Illustrator のアピアランスに相当します。
 	 * 塗り（Fill）とストローク（縁取り）を複数重ねて装飾効果を実現します。
 	 * 先に追加したものが下（奥）に描画されます。
-	 * 
+	 *
 	 * 典型的な使用順序:
 	 * 1. 影 (addShadow または addFill でオフセット付き)
 	 * 2. 縁取り (addStroke)
@@ -206,6 +296,58 @@ class RichText {
 		function addShadow(color, offsetX, offsetY);
 
 		/**
+		 * テキスト色の設定（既存の通常 Fill を置換）
+		 * @param color ARGB色値
+		 * @description
+		 * 既存の通常 Fill（オフセット 0,0 の Fill）を指定色に置き換えます。
+		 * 通常 Fill が無い場合は新規追加します。
+		 * 使用例:
+		 *   app.setColor(0xFFFF0000);  // テキスト色を赤に変更
+		 */
+		function setColor(color);
+
+		/**
+		 * テキスト色の追加（最前面に追加）
+		 * @param color ARGB色値
+		 * @param offsetX X方向オフセット（省略時: 0）
+		 * @param offsetY Y方向オフセット（省略時: 0）
+		 * @description
+		 * addFill と同様だが最前面に追加されます。
+		 */
+		function addColor(color, offsetX=0, offsetY=0);
+
+		/**
+		 * 縁取りの設定（既存の Stroke を置換）
+		 * @param color ARGB色値
+		 * @param width 線幅
+		 * @param offsetX X方向オフセット（省略時: 0）
+		 * @param offsetY Y方向オフセット（省略時: 0）
+		 * @description
+		 * 既存の Stroke を指定のものに置き換えます。
+		 * Stroke が無い場合は新規追加します。
+		 */
+		function setOutline(color, width, offsetX=0, offsetY=0);
+
+		/**
+		 * 縁取りの追加（最背面 Stroke として追加）
+		 * @param color ARGB色値
+		 * @param width 線幅
+		 * @param offsetX X方向オフセット（省略時: 0）
+		 * @param offsetY Y方向オフセット（省略時: 0）
+		 */
+		function addOutline(color, width, offsetX=0, offsetY=0);
+
+		/**
+		 * 影の設定（既存の影 Fill を置換）
+		 * @param color 影色（ARGB）
+		 * @param offsetX X方向オフセット
+		 * @param offsetY Y方向オフセット
+		 * @description
+		 * 既存の影（オフセット付き Fill）を指定のものに置き換えます。
+		 */
+		function setShadow(color, offsetX, offsetY);
+
+		/**
 		 * 全スタイルのクリア
 		 */
 		function clear();
@@ -226,6 +368,156 @@ class RichText {
 		 */
 		property count;
 	}
+
+	// =========================================================================
+	// Layout クラス
+	// =========================================================================
+
+	/**
+	 * 1行テキストレイアウトクラス
+	 * @description
+	 * 1行テキストのレイアウト計算結果を保持します。
+	 * レイアウトと描画を分離することで、計測結果の再利用や
+	 * 事前レイアウト済みテキストの描画が可能です。
+	 *
+	 * 使用例:
+	 *   var tl = new RichText.Layout();
+	 *   tl.layout("Hello World", style);
+	 *   Debug.message("幅: " + tl.width + ", 高さ: " + tl.height);
+	 *   layer.drawTextLayout(tl, 10, 50, appearance);
+	 */
+	class Layout {
+
+		/**
+		 * コンストラクタ
+		 */
+		function Layout();
+
+		/**
+		 * テキストのレイアウト（計測）を実行
+		 * @param text テキスト
+		 * @param style RichText.Style オブジェクト
+		 * @description
+		 */
+		function layout(text, style);
+
+		/**
+		 * 複製
+		 * @return 複製された Layout オブジェクト
+		 */
+		function clone();
+
+		/**
+		 * テキスト幅（読み取り専用）
+		 */
+		property width;
+
+		/**
+		 * テキスト高さ（ascent + descent）（読み取り専用）
+		 */
+		property height;
+
+		/**
+		 * アセント（ベースラインから上端まで、負の値）（読み取り専用）
+		 */
+		property ascent;
+
+		/**
+		 * ディセント（ベースラインから下端まで、正の値）（読み取り専用）
+		 */
+		property descent;
+
+		/**
+		 * グリフ数（読み取り専用）
+		 */
+		property glyphCount;
+	}
+
+	// =========================================================================
+	// ParagraphLayout クラス
+	// =========================================================================
+
+	/**
+	 * パラグラフ（複数行）テキストレイアウトクラス
+	 * @description
+	 * 複数行テキストのレイアウト計算結果を保持します。
+	 * レイアウトと描画を分離することで、計測結果の再利用や
+	 * 逐次表示（maxGlyphs 指定）に利用できます。
+	 *
+	 * 使用例:
+	 *   var pl = new RichText.ParagraphLayout();
+	 *   pl.layout("長いテキスト...", 300, style);
+	 *   Debug.message("行数: " + pl.lineCount);
+	 *   layer.drawParagraphLayout(pl, 10, 10, 300, 200,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP, style, app);
+	 */
+	class ParagraphLayout {
+
+		/**
+		 * コンストラクタ
+		 */
+		function ParagraphLayout();
+
+		/**
+		 * パラグラフのレイアウト（計測）を実行
+		 * @param text テキスト
+		 * @param maxWidth 最大幅
+		 * @param style RichText.Style オブジェクト
+		 * @description
+		 */
+		function layout(text, maxWidth, style);
+
+		/**
+		 * 行情報を取得
+		 * @param index 行インデックス（0〜lineCount-1）
+		 * @return 行情報の辞書 %[startIndex, endIndex, width, height]
+		 */
+		function getLineInfo(index);
+
+		/**
+		 * 複製
+		 * @return 複製された ParagraphLayout オブジェクト
+		 */
+		function clone();
+
+		/**
+		 * 行数（読み取り専用）
+		 */
+		property lineCount;
+
+		/**
+		 * 全行の高さ合計（読み取り専用）
+		 */
+		property totalHeight;
+
+		/**
+		 * 最大行幅（読み取り専用）
+		 */
+		property maxWidth;
+
+		/**
+		 * 全行のグリフ数合計（読み取り専用）
+		 */
+		property totalGlyphCount;
+
+		/**
+		 * 行間
+		 * @description デフォルト: 0
+		 */
+		property lineSpacing;
+
+		/**
+		 * 行分割戦略
+		 * @description
+		 * RichText.BREAK_GREEDY / BREAK_HIGH_QUALITY / BREAK_BALANCED
+		 * デフォルト: BREAK_HIGH_QUALITY
+		 */
+		property breakStrategy;
+	}
+
+	// =========================================================================
+	// StyledLayout クラス
+	// =========================================================================
 
 	/**
 	 * スタイルタグ付きテキストのレイアウトクラス
@@ -311,30 +603,6 @@ class RichText {
 		 */
 		property isValid;
 	}
-
-	/**
-	 * 矩形クラス
-	 */
-	class Rect {
-
-		/**
-		 * コンストラクタ
-		 * @param x X座標
-		 * @param y Y座標
-		 * @param width 幅
-		 * @param height 高さ
-		 */
-		function Rect(x, y, width, height);
-
-		property x;
-		property y;
-		property width;
-		property height;
-		property left;    // 読み取り専用
-		property top;     // 読み取り専用
-		property right;   // 読み取り専用
-		property bottom;  // 読み取り専用
-	}
 }
 
 /**
@@ -353,81 +621,50 @@ class Layer {
 	 * @param y 描画開始Y座標（ベースライン位置）
 	 * @param style RichText.Style オブジェクト
 	 * @param appearance RichText.Appearance オブジェクト
-	 * @return 描画領域の辞書 %[x, y, width, height, right, bottom]
+	 * @return 描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 基本的な1行テキスト描画。自動改行は行われません。
-	 * 
+	 *
+	 * 注意: 吉里吉里標準の Layer.drawText() との名前衝突を避けるため、
+	 * TJS 側での名前は drawTextEx になります。
+	 *
 	 * 使用例:
 	 *   var style = new RichText.Style();
 	 *   style.setFonts(["MSゴシック"]);
 	 *   style.fontSize = 24;
-	 *   
+	 *
 	 *   var app = new RichText.Appearance();
 	 *   app.addFill(0xFFFFFFFF);
-	 *   
-	 *   var rect = layer.drawText("Hello World", 10, 50, style, app);
+	 *
+	 *   var rect = layer.drawTextEx("Hello World", 10, 50, style, app);
 	 */
-	function drawText(text, x, y, style, appearance);
+	function drawTextEx(text, x, y, style, appearance);
 
 	/**
 	 * パラグラフ（複数行テキスト）を描画
 	 * @param text 描画するテキスト
-	 * @param rect 描画領域（RichText.Rect または [x, y, width, height] の配列、または辞書）
+	 * @param x 描画領域の左端
+	 * @param y 描画領域の上端
+	 * @param width 描画領域の幅
+	 * @param height 描画領域の高さ
 	 * @param hAlign 水平アライン (RichText.HALIGN_LEFT/CENTER/RIGHT)
 	 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
 	 * @param style RichText.Style オブジェクト
 	 * @param appearance RichText.Appearance オブジェクト
-	 * @return 実際の描画領域の辞書
+	 * @return 実際の描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 指定した矩形領域内に自動改行してテキストを描画します。
-	 * 
+	 *
 	 * 使用例:
 	 *   var rect = layer.drawParagraph(
 	 *       "長いテキストは自動的に\n改行されます。",
-	 *       [10, 10, 300, 200],
+	 *       10, 10, 300, 200,
 	 *       RichText.HALIGN_LEFT,
 	 *       RichText.VALIGN_TOP,
 	 *       style, app
 	 *   );
 	 */
-	function drawParagraph(text, rect, hAlign, vAlign, style, appearance);
-
-	/**
-	 * タグ付きテキストを描画
-	 * @param text タグ付きテキスト
-	 * @param rect 描画領域
-	 * @param hAlign 水平アライン
-	 * @param vAlign 垂直アライン
-	 * @param defaultStyle デフォルトの RichText.Style
-	 * @param defaultAppearance デフォルトの RichText.Appearance
-	 * @return 実際の描画領域の辞書
-	 * @description
-	 * HTMLライクなタグでスタイルを変更しながら描画します。
-	 * 
-	 * 対応タグ:
-	 *   <b>太字</b>
-	 *   <i>斜体</i>
-	 *   <font size='24' weight='700'>フォント変更</font>
-	 *   <color value='0xFFFF0000'>色変更</color>
-	 *   <outline color='0xFF000000' width='2'>縁取り</outline>
-	 *   <shadow color='0x80000000' x='2' y='2'>影付き</shadow>
-	 *   <br> 改行
-	 * 
-	 * エスケープ:
-	 *   &lt; → <
-	 *   &gt; → >
-	 *   &amp; → &
-	 * 
-	 * 使用例:
-	 *   layer.drawTaggedText(
-	 *       "<b>太字</b>と<color value='0xFFFF0000'>赤色</color>テキスト",
-	 *       [10, 10, 400, 300],
-	 *       RichText.HALIGN_LEFT,
-	 *       RichText.VALIGN_TOP,
-	 *       style, app
-	 *   );
-	 */
-	function drawTaggedText(text, rect, hAlign, vAlign, defaultStyle, defaultAppearance);
+	function drawParagraph(text, x, y, width, height, hAlign, vAlign, style, appearance);
 
 	/**
 	 * スタイルタグ付きテキストを描画
@@ -441,7 +678,7 @@ class Layer {
 	 * @param styles Style 単体、またはスタイル名→Style の辞書
 	 * @param appearances Appearance 単体、またはスタイル名→Appearance の辞書
 	 * @param lineSpacing 行間（省略時: 0）
-	 * @return 実際の描画領域の辞書
+	 * @return 実際の描画領域の配列 [x, y, width, height]
 	 * @description
 	 * <style:名前> タグでスタイルを切り替えながらテキストを描画します。
 	 * styles / appearances に単体オブジェクトを渡すと "default" キーとして扱われます。
@@ -468,12 +705,63 @@ class Layer {
 	function drawStyledText(text, x, y, width, height, hAlign, vAlign, styles, appearances, lineSpacing=0);
 
 	/**
+	 * レイアウト済み TextLayout を描画
+	 * @param textLayout RichText.Layout オブジェクト（layout() 済み）
+	 * @param x 描画開始X座標
+	 * @param y 描画開始Y座標（ベースライン位置）
+	 * @param appearance RichText.Appearance オブジェクト
+	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @return 描画領域の配列 [x, y, width, height]
+	 * @description
+	 * 事前にレイアウト計算済みの Layout を描画します。
+	 * 同一レイアウトの再描画に利用できます。
+	 *
+	 * 使用例:
+	 *   var tl = new RichText.Layout();
+	 *   tl.layout("Hello World", style);
+	 *   layer.drawTextLayout(tl, 10, 50, appearance);
+	 */
+	function drawTextLayout(textLayout, x, y, appearance, maxGlyphs=-1);
+
+	/**
+	 * レイアウト済み ParagraphLayout を描画
+	 * @param paraLayout RichText.ParagraphLayout オブジェクト（layout() 済み）
+	 * @param x 描画領域の左端
+	 * @param y 描画領域の上端
+	 * @param width 描画領域の幅
+	 * @param height 描画領域の高さ
+	 * @param hAlign 水平アライン (RichText.HALIGN_LEFT/CENTER/RIGHT)
+	 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
+	 * @param style RichText.Style オブジェクト
+	 * @param appearance RichText.Appearance オブジェクト
+	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @return 実際の描画領域の配列 [x, y, width, height]
+	 * @description
+	 * 事前にレイアウト計算済みの ParagraphLayout を描画します。
+	 * maxGlyphs を指定することで逐次表示（文字送り）が実現できます。
+	 *
+	 * 使用例:
+	 *   var pl = new RichText.ParagraphLayout();
+	 *   pl.layout("長いテキスト...", 300, style);
+	 *
+	 *   layer.drawParagraphLayout(pl, 10, 10, 300, 200,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       style, app);
+	 *
+	 *   // 文字送り（最初の5グリフだけ描画）
+	 *   layer.drawParagraphLayout(pl, 10, 10, 300, 200,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       style, app, 5);
+	 */
+	function drawParagraphLayout(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs=-1);
+
+	/**
 	 * レイアウト済み StyledLayout を描画
 	 * @param styledLayout RichText.StyledLayout オブジェクト
 	 * @param x 描画X座標
 	 * @param y 描画Y座標
 	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
-	 * @return 実際の描画領域の辞書
+	 * @return 実際の描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 事前にレイアウト計算済みの StyledLayout を描画します。
 	 * maxGlyphs を指定することで文字送りアニメーションが実現できます。
@@ -492,34 +780,24 @@ class Layer {
 	 */
 	function drawStyledLayout(styledLayout, x, y, maxGlyphs=-1);
 
-	// =========================================================================
-	// 計測メソッド
-	// =========================================================================
-
 	/**
-	 * テキストサイズを計測（描画せずにサイズを取得）
-	 * @param text テキスト
-	 * @param style RichText.Style オブジェクト
-	 * @return サイズ情報の辞書 %[width, height, ascent, descent]
+	 * 矩形を描画
+	 * @param x X座標
+	 * @param y Y座標
+	 * @param width 幅
+	 * @param height 高さ
+	 * @param fillColor 塗り色（ARGB、省略時: 0）
+	 * @param strokeColor ストローク色（ARGB、0で無効、省略時: 0）
+	 * @param strokeWidth ストローク幅（省略時: 0）
 	 * @description
+	 * 注意: 吉里吉里標準の Layer.drawRect() との名前衝突を避けるため、
+	 * TJS 側での名前は drawRectEx になります。
+	 *
 	 * 使用例:
-	 *   var size = layer.measureText("Hello", style);
-	 *   Debug.message("幅: " + size.width + ", 高さ: " + size.height);
+	 *   layer.drawRectEx(10, 10, 200, 100, 0x80FF0000);  // 半透明赤の矩形
+	 *   layer.drawRectEx(10, 10, 200, 100, 0, 0xFF000000, 2);  // 黒枠のみ
 	 */
-	function measureText(text, style);
-
-	/**
-	 * パラグラフサイズを計測
-	 * @param text テキスト
-	 * @param maxWidth 最大幅
-	 * @param style RichText.Style オブジェクト
-	 * @return サイズ情報の辞書 %[width, height, lineCount]
-	 * @description
-	 * 使用例:
-	 *   var size = layer.measureParagraph("長いテキスト...", 300, style);
-	 *   Debug.message("行数: " + size.lineCount);
-	 */
-	function measureParagraph(text, maxWidth, style);
+	function drawRectEx(x, y, width, height, fillColor=0, strokeColor=0, strokeWidth=0);
 
 	// =========================================================================
 	// キャッシュ制御
@@ -544,6 +822,37 @@ class Layer {
 	 */
 	function setCacheMaxSize(bytes);
 }
+
+// =============================================================================
+// インラインタグ（drawTaggedText 等で使用）
+// =============================================================================
+
+/*
+対応タグ一覧:
+
+  <font face='フォント名' size=24 weight=700>フォント変更</font>
+  <color value=0xFFFF0000>色変更</color>
+  <color value='#FF0000'>色変更（#形式）</color>
+  <color r=255 g=0 b=0 a=255>色変更（RGB個別）</color>
+  <b>太字</b>
+  <i>斜体</i>
+  <u>下線</u>
+  <s>取り消し線</s>
+  <ruby text='ふりがな'>親文字</ruby>
+  <sup>上付き文字</sup>
+  <sub>下付き文字</sub>
+  <outline color=0xFF000000 width=2>縁取り</outline>
+  <shadow color=0x80000000 x=2 y=2>影付き</shadow>
+  <style name='スタイル名'>登録済みスタイル参照</style>
+  <br> 改行
+  <sp width=2> スペース（em単位）
+
+エスケープ:
+  &lt; → <
+  &gt; → >
+  &amp; → &
+  &quot; → "
+*/
 
 // =============================================================================
 // 使用例
@@ -575,23 +884,39 @@ layer.setImageSize(800, 600);
 layer.fillRect(0, 0, 800, 600, 0xFF808080);  // 背景
 
 // 1行描画
-layer.drawText("Hello World こんにちは", 10, 50, style, app);
+layer.drawTextEx("Hello World こんにちは", 10, 50, style, app);
 
 // パラグラフ描画
 layer.drawParagraph(
     "これは長いテキストの例です。指定した幅で自動的に改行されます。",
-    [10, 100, 300, 200],
+    10, 100, 300, 200,
     RichText.HALIGN_LEFT,
     RichText.VALIGN_TOP,
     style, app
 );
 
-// タグ付きテキスト
-layer.drawTaggedText(
-    "<b>太字</b>、<i>斜体</i>、<color value='0xFFFF0000'>赤色</color>の例",
-    [10, 350, 400, 200],
-    RichText.HALIGN_CENTER,
-    RichText.VALIGN_TOP,
-    style, app
+// スタイルタグ付きテキスト
+layer.drawStyledText(
+    "通常<style:bold>太字</style>通常",
+    10, 350, 400, 200,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    %[ "default": style, "bold": boldStyle ],
+    %[ "default": app, "bold": boldApp ]
 );
+
+// 事前レイアウト + 文字送りアニメーション
+var sl = new RichText.StyledLayout();
+sl.layout(
+    "テキストが<style:bold>順番に</style>表示されます",
+    400, 300,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    %[ "default": style, "bold": boldStyle ],
+    %[ "default": app, "bold": boldApp ]
+);
+
+for (var i = 1; i <= sl.totalGlyphCount; i++) {
+    layer.fillRect(0, 0, 800, 600, 0xFF808080);
+    layer.drawStyledLayout(sl, 10, 10, i);
+    // ... フレーム待ち ...
+}
 */

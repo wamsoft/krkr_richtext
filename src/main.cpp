@@ -307,24 +307,24 @@ public:
 
 class RichTextLayout {
 public:
-    TextLayout layout;
+    TextLayout layout_;
 
     RichTextLayout() {}
 
-    void measure(const tjs_char* text, RichTextStyle* style) {
+    void layout(const tjs_char* text, RichTextStyle* style) {
         if (!style) TVPThrowExceptionMessage(TJS_W("style is required"));
-        layout.layout(tjsToU16(text), style->style);
+        layout_.layout(tjsToU16(text), style->style);
     }
 
-    float getWidth() const { return layout.getWidth(); }
-    float getHeight() const { return layout.getHeight(); }
-    float getAscent() const { return layout.getAscent(); }
-    float getDescent() const { return layout.getDescent(); }
-    int getGlyphCount() const { return static_cast<int>(layout.getGlyphCount()); }
+    float getWidth() const { return layout_.getWidth(); }
+    float getHeight() const { return layout_.getHeight(); }
+    float getAscent() const { return layout_.getAscent(); }
+    float getDescent() const { return layout_.getDescent(); }
+    int getGlyphCount() const { return static_cast<int>(layout_.getGlyphCount()); }
 
     RichTextLayout* clone() const {
         RichTextLayout* c = new RichTextLayout();
-        c->layout = layout;
+        c->layout_ = layout_;
         return c;
     }
 };
@@ -335,34 +335,34 @@ public:
 
 class RichTextParagraphLayout {
 public:
-    ParagraphLayout layout;
+    ParagraphLayout layout_;
 
     RichTextParagraphLayout() {}
 
-    void measure(const tjs_char* text, float maxWidth, RichTextStyle* style) {
+    void layout(const tjs_char* text, float maxWidth, RichTextStyle* style) {
         if (!style) TVPThrowExceptionMessage(TJS_W("style is required"));
         cachedText_ = tjsToU16(text);
         cachedMaxWidth_ = maxWidth;
         cachedStyle_ = &style->style;
-        layout.layout(cachedText_, maxWidth, style->style);
+        layout_.layout(cachedText_, maxWidth, style->style);
     }
 
-    int getLineCount() const { return static_cast<int>(layout.getLineCount()); }
-    float getTotalHeight() const { return layout.getTotalHeight(); }
-    float getMaxWidth() const { return layout.getMaxWidth(); }
-    int getTotalGlyphCount() const { return static_cast<int>(layout.getTotalGlyphCount()); }
+    int getLineCount() const { return static_cast<int>(layout_.getLineCount()); }
+    float getTotalHeight() const { return layout_.getTotalHeight(); }
+    float getMaxWidth() const { return layout_.getMaxWidth(); }
+    int getTotalGlyphCount() const { return static_cast<int>(layout_.getTotalGlyphCount()); }
 
-    void setLineSpacing(float v) { layout.setLineSpacing(v); }
-    float getLineSpacing() const { return layout.getLineSpacing(); }
-    
-    void setBreakStrategy(int v) { layout.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
-    int getBreakStrategy() const { return static_cast<int>(layout.getBreakStrategy()); }
+    void setLineSpacing(float v) { layout_.setLineSpacing(v); }
+    float getLineSpacing() const { return layout_.getLineSpacing(); }
+
+    void setBreakStrategy(int v) { layout_.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
+    int getBreakStrategy() const { return static_cast<int>(layout_.getBreakStrategy()); }
 
     tTJSVariant getLineInfo(int index) const {
-        if (index < 0 || index >= static_cast<int>(layout.getLineCount())) {
+        if (index < 0 || index >= static_cast<int>(layout_.getLineCount())) {
             TVPThrowExceptionMessage(TJS_W("line index out of range"));
         }
-        const auto& line = layout.getLine(index);
+        const auto& line = layout_.getLine(index);
         iTJSDispatch2* dict = TJSCreateDictionaryObject();
         tTJSVariant val;
         val = static_cast<int>(line.startIndex);
@@ -384,9 +384,9 @@ public:
             c->cachedText_ = cachedText_;
             c->cachedMaxWidth_ = cachedMaxWidth_;
             c->cachedStyle_ = cachedStyle_;
-            c->layout.setLineSpacing(layout.getLineSpacing());
-            c->layout.setBreakStrategy(layout.getBreakStrategy());
-            c->layout.layout(cachedText_, cachedMaxWidth_, *cachedStyle_);
+            c->layout_.setLineSpacing(layout_.getLineSpacing());
+            c->layout_.setBreakStrategy(layout_.getBreakStrategy());
+            c->layout_.layout(cachedText_, cachedMaxWidth_, *cachedStyle_);
         }
         return c;
     }
@@ -425,27 +425,27 @@ NCB_TYPECONV_CAST_INTEGER(minikin::Bidi);
 
 class RichTextStyledLayout {
 public:
-    StyledLayout layout;
+    StyledLayout layout_;
 
     RichTextStyledLayout() {}
 
     // lineCount
-    int getLineCount() const { return static_cast<int>(layout.getLineCount()); }
+    int getLineCount() const { return static_cast<int>(layout_.getLineCount()); }
 
     // totalGlyphCount
-    int getTotalGlyphCount() const { return static_cast<int>(layout.getTotalGlyphCount()); }
+    int getTotalGlyphCount() const { return static_cast<int>(layout_.getTotalGlyphCount()); }
 
     // totalCharCount
-    int getTotalCharCount() const { return static_cast<int>(layout.getTotalCharCount()); }
+    int getTotalCharCount() const { return static_cast<int>(layout_.getTotalCharCount()); }
 
     // maxWidth
-    float getMaxWidth() const { return layout.getMaxWidth(); }
+    float getMaxWidth() const { return layout_.getMaxWidth(); }
 
     // maxHeight
-    float getMaxHeight() const { return layout.getMaxHeight(); }
+    float getMaxHeight() const { return layout_.getMaxHeight(); }
 
     // isValid
-    bool getIsValid() const { return layout.isValid(); }
+    bool getIsValid() const { return layout_.isValid(); }
 };
 
 // ============================================================================
@@ -552,6 +552,17 @@ public:
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
+    
+    // TextLayout描画
+    tTJSVariant drawTextLayout(RichTextLayout* textLayout, float x, float y, RichTextAppearance* appearance, int maxGlyphs = -1) {
+        if (!textLayout || !appearance) {
+            TVPThrowExceptionMessage(TJS_W("textLayout and appearance are required"));
+        }
+        richtext::RectF result = renderer_.drawLayout(textLayout->layout_, x, y, appearance->appearance, maxGlyphs);
+        renderer_.sync();
+        redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
+        return toVariant(result);
+    }
 
     // ParagraphLayout描画
     tTJSVariant drawParagraphLayout(RichTextParagraphLayout* paraLayout, float x, float y, float width, float height, int hAlign, int vAlign, RichTextStyle* style, RichTextAppearance* appearance, int maxGlyphs = -1) {
@@ -559,7 +570,7 @@ public:
             TVPThrowExceptionMessage(TJS_W("paraLayout, style and appearance are required"));
         }
         richtext::RectF r(x, y, width, height);
-        richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxGlyphs);
+        richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout_, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxGlyphs);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
@@ -570,7 +581,7 @@ public:
         if (!styledLayout) {
             TVPThrowExceptionMessage(TJS_W("styledLayout is required"));
         }
-        richtext::RectF result = renderer_.drawStyledLayout(styledLayout->layout, x, y, maxGlyphs);
+        richtext::RectF result = renderer_.drawStyledLayout(styledLayout->layout_, x, y, maxGlyphs);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
@@ -581,48 +592,6 @@ public:
         renderer_.drawRect(x, y, width, height, fillColor, strokeColor, strokeWidth);
         renderer_.sync();
         redraw(static_cast<int>(x), static_cast<int>(y), static_cast<int>(width) + 1, static_cast<int>(height) + 1);
-    }
-
-    // 1行テキスト計測
-    tTJSVariant measureText(const tjs_char* text, RichTextStyle* style) {
-        if (!style) {
-            TVPThrowExceptionMessage(TJS_W("style is required"));
-        }
-        std::u16string u16text = tjsToU16(text);
-        TextLayout layout = renderer_.measureText(u16text, style->style);
-        iTJSDispatch2* dict = TJSCreateDictionaryObject();
-        tTJSVariant val;
-        val = layout.getWidth();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("width"), nullptr, &val, dict);
-        val = layout.getHeight();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("height"), nullptr, &val, dict);
-        val = layout.getAscent();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("ascent"), nullptr, &val, dict);
-        val = layout.getDescent();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("descent"), nullptr, &val, dict);
-        tTJSVariant result(dict, dict);
-        dict->Release();
-        return result;
-    }
-
-    // パラグラフ計測
-    tTJSVariant measureParagraph(const tjs_char* text, float maxWidth, RichTextStyle* style) {
-        if (!style) {
-            TVPThrowExceptionMessage(TJS_W("style is required"));
-        }
-        std::u16string u16text = tjsToU16(text);
-        ParagraphLayout layout = renderer_.measureParagraph(u16text, maxWidth, style->style);
-        iTJSDispatch2* dict = TJSCreateDictionaryObject();
-        tTJSVariant val;
-        val = layout.getMaxWidth();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("width"), nullptr, &val, dict);
-        val = layout.getTotalHeight();
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("height"), nullptr, &val, dict);
-        val = static_cast<int>(layout.getLineCount());
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("lineCount"), nullptr, &val, dict);
-        tTJSVariant result(dict, dict);
-        dict->Release();
-        return result;
     }
     
     // ------------------------------------------------------------------
@@ -860,6 +829,26 @@ private:
     std::map<std::string, Appearance> &appearances;
 };
 
+// drawTextLayout RawCallback（省略可能maxGlyphs対応）
+static tjs_error TJS_INTF_METHOD
+LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                           tTJSVariant** param, LayerExRichText* objthis)
+{
+    if (numparams < 4) return TJS_E_BADPARAMCOUNT;
+    RichTextLayout* textLayout = ncbInstanceAdaptor<RichTextLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    float x = static_cast<float>(param[1]->AsReal());
+    float y = static_cast<float>(param[2]->AsReal());
+    RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[3]->AsObjectNoAddRef());
+    int maxGlyphs = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
+
+    if (result) {
+        *result = objthis->drawTextLayout(textLayout, x, y, appearance, maxGlyphs);
+    } else {
+        objthis->drawTextLayout(textLayout, x, y, appearance, maxGlyphs);
+    }
+    return TJS_S_OK;
+}
+
 // drawStyledText RawCallback（省略可能lineSpacing対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparams,
@@ -967,7 +956,7 @@ RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
 
     float lineSpacing = (numparams >= 8) ? static_cast<float>(param[7]->AsReal()) : 0.0f;
 
-    objthis->layout.layout(tjsToU16(text.c_str()), maxWidth, maxHeight,
+    objthis->layout_.layout(tjsToU16(text.c_str()), maxWidth, maxHeight,
                            static_cast<ParagraphLayout::HAlign>(hAlign),
                            static_cast<ParagraphLayout::VAlign>(vAlign),
                            styles, appearances, lineSpacing);
@@ -1134,7 +1123,7 @@ NCB_REGISTER_SUBCLASS(RichTextAppearance) {
 // RichTextLayout サブクラス
 NCB_REGISTER_SUBCLASS(RichTextLayout) {
     NCB_CONSTRUCTOR(());
-    NCB_METHOD(measure);
+    NCB_METHOD(layout);
     NCB_PROPERTY_RO(width, getWidth);
     NCB_PROPERTY_RO(height, getHeight);
     NCB_PROPERTY_RO(ascent, getAscent);
@@ -1146,7 +1135,7 @@ NCB_REGISTER_SUBCLASS(RichTextLayout) {
 // RichTextParagraphLayout サブクラス
 NCB_REGISTER_SUBCLASS(RichTextParagraphLayout) {
     NCB_CONSTRUCTOR(());
-    NCB_METHOD(measure);
+    NCB_METHOD(layout);
     NCB_PROPERTY_RO(lineCount, getLineCount);
     NCB_PROPERTY_RO(totalHeight, getTotalHeight);
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
@@ -1233,13 +1222,10 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_METHOD_DIFFER(drawTextEx, drawText);
     NCB_METHOD(drawParagraph);
     NCB_METHOD_RAW_CALLBACK(drawStyledText, LayerExRichText_drawStyledText_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(drawTextLayout, LayerExRichText_drawTextLayout_RawCallback, 0);
     NCB_METHOD_RAW_CALLBACK(drawParagraphLayout, LayerExRichText_drawParagraphLayout_RawCallback, 0);
     NCB_METHOD_RAW_CALLBACK(drawStyledLayout, LayerExRichText_drawStyledLayout_RawCallback, 0);
     NCB_METHOD_RAW_CALLBACK(drawRectEx, LayerExRichText_drawRect_RawCallback, 0);
-
-    // 計測メソッド
-    NCB_METHOD(measureText);
-    NCB_METHOD(measureParagraph);
 
     // キャッシュ制御
     NCB_PROPERTY(useCache, getUseCache, setUseCache);

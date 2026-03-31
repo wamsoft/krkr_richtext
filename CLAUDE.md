@@ -48,6 +48,6 @@ TJS2 の文字列は UTF-16 (`tjs_char*`) なので `tjsToU16()` / `u16ToTjs()` 
 
 ## 参考ドキュメント
 
-- `api-reference.md` — TJS2 向け API リファレンス
+- `manual.tjs` — TJS2 向け API リファレンス（擬似コード形式）
 - `実装.md` — 実装進捗
 - `../richtext/設計.md` — コアライブラリ設計資料
