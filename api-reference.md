@@ -200,7 +200,74 @@ outlineText.addFill(0xFFFF6600);       // オレンジ塗り
 
 ---
 
-### 1.5 Layer 拡張メソッド
+### 1.5 StyledLayout クラス
+
+スタイルタグ付きテキストのレイアウト計算結果を保持するクラス。レイアウトと描画を分離することで、同一テキストの再描画や文字送りアニメーションを効率的に実現できます。
+
+#### コンストラクタ
+
+```tjs
+var sl = new StyledLayout();
+```
+
+#### メソッド
+
+##### layout(text, maxWidth, maxHeight, hAlign, vAlign, styles, appearances, lineSpacing)
+
+テキストのレイアウトを計算します。
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|------|
+| text | String | - | スタイルタグ付きテキスト |
+| maxWidth | Real | - | 最大幅 |
+| maxHeight | Real | - | 最大高さ |
+| hAlign | Integer | - | 水平アライン（RichText.HALIGN_LEFT 等） |
+| vAlign | Integer | - | 垂直アライン（RichText.VALIGN_TOP 等） |
+| styles | TextStyle/Dictionary | - | TextStyle 単体、またはスタイル名 → TextStyle の辞書 |
+| appearances | Appearance/Dictionary | - | Appearance 単体、またはスタイル名 → Appearance の辞書 |
+| lineSpacing | Real | 0.0 | 行間（省略可） |
+
+styles / appearances に単体オブジェクトを渡すと `"default"` キーとして扱われます。
+
+```tjs
+var sl = new StyledLayout();
+sl.layout(
+    "<style:bold>太字</style>と通常テキスト",
+    400, 300,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    %[ "default": normalStyle, "bold": boldStyle ],
+    %[ "default": normalApp, "bold": boldApp ]
+);
+```
+
+#### プロパティ（読み取り専用）
+
+| プロパティ | 型 | 説明 |
+|-----------|------|------|
+| lineCount | Integer | 行数 |
+| totalGlyphCount | Integer | 総グリフ数 |
+| totalCharCount | Integer | 総文字数 |
+| maxWidth | Real | レイアウトの最大幅 |
+| maxHeight | Real | レイアウトの最大高さ |
+| isValid | Boolean | レイアウトが有効かどうか |
+
+```tjs
+// レイアウト情報の取得
+dm("行数: " + sl.lineCount);
+dm("グリフ数: " + sl.totalGlyphCount);
+dm("文字数: " + sl.totalCharCount);
+
+// 文字送りアニメーション
+var total = sl.totalGlyphCount;
+for (var i = 1; i <= total; i++) {
+    layer.drawStyledLayout(sl, 10, 10, i);
+    // ... フレーム待ち ...
+}
+```
+
+---
+
+### 1.6 Layer 拡張メソッド
 
 Layer クラスに追加される描画メソッド。
 
@@ -248,18 +315,39 @@ layer.drawParagraph(
 );
 ```
 
-#### drawStyledText(text, rect, styles, appearances)
+#### drawStyledText(text, x, y, width, height, hAlign, vAlign, styles, appearances, lineSpacing)
 
 スタイルタグ付きテキストを描画します。
 
-| パラメータ | 型 | 説明 |
-|-----------|------|------|
-| text | String | スタイルタグ付きテキスト |
-| rect | Dictionary | 描画領域 |
-| styles | Dictionary | スタイル名 → TextStyle のマップ |
-| appearances | Dictionary | スタイル名 → Appearance のマップ |
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|------|
+| text | String | - | スタイルタグ付きテキスト |
+| x | Real | - | 描画領域の左端 |
+| y | Real | - | 描画領域の上端 |
+| width | Real | - | 描画領域の幅 |
+| height | Real | - | 描画領域の高さ |
+| hAlign | Integer | - | 水平アライン（RichText.HALIGN_LEFT 等） |
+| vAlign | Integer | - | 垂直アライン（RichText.VALIGN_TOP 等） |
+| styles | TextStyle/Dictionary | - | TextStyle 単体、またはスタイル名 → TextStyle の辞書 |
+| appearances | Appearance/Dictionary | - | Appearance 単体、または スタイル名 → Appearance の辞書 |
+| lineSpacing | Real | 0.0 | 行間（省略可） |
+
+| 戻り値 | 型 | 説明 |
+|--------|------|------|
+| bounds | Dictionary | 描画した領域 {x, y, width, height} |
+
+styles / appearances に単体オブジェクトを渡すと `"default"` キーとして扱われます。
 
 ```tjs
+// 単一スタイルで描画
+layer.drawStyledText(
+    "これは<style:bold>太字</style>です。",
+    10, 10, 400, 300,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    defaultStyle, defaultAppearance
+);
+
+// 複数スタイルで描画
 var styles = %[
     "default": normalStyle,
     "bold": boldStyle,
@@ -273,10 +361,42 @@ var appearances = %[
 
 layer.drawStyledText(
     "これは<style:bold>太字</style>で、<style:red>赤い文字</style>も使えます。",
-    %[x: 10, y: 10, width: 400, height: 300],
-    styles,
-    appearances
+    10, 10, 400, 300,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    styles, appearances
 );
+```
+
+#### drawStyledLayout(styledLayout, x, y, maxGlyphs)
+
+事前にレイアウト計算済みの StyledLayout を描画します。レイアウトと描画を分離することで、同一レイアウトの再描画や文字送りアニメーションに利用できます。
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|------|
+| styledLayout | StyledLayout | - | レイアウト済みの StyledLayout オブジェクト |
+| x | Real | - | 描画X座標 |
+| y | Real | - | 描画Y座標 |
+| maxGlyphs | Integer | -1 | 描画するグリフ数の上限（-1で全て、省略可） |
+
+| 戻り値 | 型 | 説明 |
+|--------|------|------|
+| bounds | Dictionary | 描画した領域 {x, y, width, height} |
+
+```tjs
+// StyledLayout を作成してレイアウト
+var sl = new StyledLayout();
+sl.layout(
+    "<style:bold>太字</style>と<style:red>赤い文字</style>",
+    400, 300,
+    RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+    styles, appearances
+);
+
+// 描画
+layer.drawStyledLayout(sl, 10, 10);
+
+// 文字送り：最初の5グリフだけ描画
+layer.drawStyledLayout(sl, 10, 10, 5);
 ```
 
 #### drawTaggedText(text, rect, style, appearance, namedStyles, namedAppearances)
@@ -305,7 +425,7 @@ layer.drawTaggedText(
 
 ---
 
-### 1.6 インラインタグ
+### 1.7 インラインタグ
 
 #### 対応タグ一覧
 
@@ -462,7 +582,7 @@ layer.drawTaggedText(
 
 ---
 
-### 1.7 タグ付きテキストからスタイル定義を生成
+### 1.8 タグ付きテキストからスタイル定義を生成
 
 タグ付きテキストをパースして、独立したスタイル定義（StyleRun配列）を生成できます。
 これにより、パース結果をキャッシュしたり、複数回描画したりできます。
@@ -596,7 +716,7 @@ for (var i = 0; i < glyphs.count; i++) {
 
 ---
 
-### 1.7 タグパーサー API
+### 1.9 タグパーサー API
 
 #### RichText.parseTaggedText(text, defaultStyle, defaultAppearance, namedStyles, namedAppearances)
 

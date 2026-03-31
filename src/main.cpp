@@ -420,6 +420,35 @@ NCB_TYPECONV_CAST_INTEGER(ParagraphLayout::BreakStrategy);
 NCB_TYPECONV_CAST_INTEGER(minikin::Bidi);
 
 // ============================================================================
+// TJSラッパークラス: RichTextStyledLayout (StyledLayout のラッパー)
+// ============================================================================
+
+class RichTextStyledLayout {
+public:
+    StyledLayout layout;
+
+    RichTextStyledLayout() {}
+
+    // lineCount
+    int getLineCount() const { return static_cast<int>(layout.getLineCount()); }
+
+    // totalGlyphCount
+    int getTotalGlyphCount() const { return static_cast<int>(layout.getTotalGlyphCount()); }
+
+    // totalCharCount
+    int getTotalCharCount() const { return static_cast<int>(layout.getTotalCharCount()); }
+
+    // maxWidth
+    float getMaxWidth() const { return layout.getMaxWidth(); }
+
+    // maxHeight
+    float getMaxHeight() const { return layout.getMaxHeight(); }
+
+    // isValid
+    bool getIsValid() const { return layout.isValid(); }
+};
+
+// ============================================================================
 // レイヤー拡張: LayerExRichText
 // ============================================================================
 
@@ -531,6 +560,17 @@ public:
         }
         richtext::RectF r(x, y, width, height);
         richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxGlyphs);
+        renderer_.sync();
+        redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
+        return toVariant(result);
+    }
+
+    // StyledLayout描画
+    tTJSVariant drawStyledLayout(RichTextStyledLayout* styledLayout, float x, float y, int maxGlyphs = -1) {
+        if (!styledLayout) {
+            TVPThrowExceptionMessage(TJS_W("styledLayout is required"));
+        }
+        richtext::RectF result = renderer_.drawStyledLayout(styledLayout->layout, x, y, maxGlyphs);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
@@ -842,7 +882,7 @@ LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparam
     } else {
 		StylesGetCaller *caller = new StylesGetCaller(styles);
 		tTJSVariantClosure closure(caller);
-        param[7]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+        param[7]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
     }
 
     // 単発か辞書で渡す
@@ -853,7 +893,7 @@ LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparam
     } else {
         AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
         tTJSVariantClosure closure(caller);
-        param[8]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+        param[8]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP, &closure, NULL);
     }
     float lineSpacing = (numparams >= 10) ? static_cast<float>(param[9]->AsReal()) : 0.0f;
 
@@ -887,6 +927,68 @@ LayerExRichText_drawParagraphLayout_RawCallback(tTJSVariant* result, tjs_int num
     } else {
         objthis->drawParagraphLayout(
             paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
+    }
+    return TJS_S_OK;
+}
+
+// StyledLayout::layout RawCallback（TJS辞書→std::map変換）
+static tjs_error TJS_INTF_METHOD
+RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                        tTJSVariant** param, RichTextStyledLayout* objthis)
+{
+    if (numparams < 7) return TJS_E_BADPARAMCOUNT;
+    ttstr text = static_cast<ttstr>(*param[0]);
+    float maxWidth = static_cast<float>(param[1]->AsReal());
+    float maxHeight = static_cast<float>(param[2]->AsReal());
+    int hAlign = static_cast<int>(param[3]->AsInteger());
+    int vAlign = static_cast<int>(param[4]->AsInteger());
+
+    // styles: RichTextStyle単体 or 辞書
+    std::map<std::string, TextStyle> styles;
+    RichTextStyle* defaultStyle = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[5]->AsObjectNoAddRef());
+    if (defaultStyle) {
+        styles["default"] = defaultStyle->style;
+    } else {
+        StylesGetCaller *caller = new StylesGetCaller(styles);
+        tTJSVariantClosure closure(caller);
+        param[5]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+    }
+
+    // appearances: RichTextAppearance単体 or 辞書
+    std::map<std::string, Appearance> appearances;
+    RichTextAppearance* defaultAppearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[6]->AsObjectNoAddRef());
+    if (defaultAppearance) {
+        appearances["default"] = defaultAppearance->appearance;
+    } else {
+        AppearancesGetCaller *caller = new AppearancesGetCaller(appearances);
+        tTJSVariantClosure closure(caller);
+        param[6]->AsObjectClosureNoAddRef().EnumMembers(TJS_IGNOREPROP|TJS_ENUM_NO_VALUE, &closure, NULL);
+    }
+
+    float lineSpacing = (numparams >= 8) ? static_cast<float>(param[7]->AsReal()) : 0.0f;
+
+    objthis->layout.layout(tjsToU16(text.c_str()), maxWidth, maxHeight,
+                           static_cast<ParagraphLayout::HAlign>(hAlign),
+                           static_cast<ParagraphLayout::VAlign>(vAlign),
+                           styles, appearances, lineSpacing);
+    return TJS_S_OK;
+}
+
+// drawStyledLayout RawCallback（省略可能maxGlyphs対応）
+static tjs_error TJS_INTF_METHOD
+LayerExRichText_drawStyledLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                             tTJSVariant** param, LayerExRichText* objthis)
+{
+    if (numparams < 3) return TJS_E_BADPARAMCOUNT;
+    RichTextStyledLayout* styledLayout = ncbInstanceAdaptor<RichTextStyledLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
+    float x = static_cast<float>(param[1]->AsReal());
+    float y = static_cast<float>(param[2]->AsReal());
+    int maxGlyphs = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
+
+    if (result) {
+        *result = objthis->drawStyledLayout(styledLayout, x, y, maxGlyphs);
+    } else {
+        objthis->drawStyledLayout(styledLayout, x, y, maxGlyphs);
     }
     return TJS_S_OK;
 }
@@ -1055,6 +1157,18 @@ NCB_REGISTER_SUBCLASS(RichTextParagraphLayout) {
     NCB_METHOD(clone);
 };
 
+// RichTextStyledLayout サブクラス
+NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
+    NCB_CONSTRUCTOR(());
+    NCB_METHOD_RAW_CALLBACK(layout, RichTextStyledLayout_layout_RawCallback, 0);
+    NCB_PROPERTY_RO(lineCount, getLineCount);
+    NCB_PROPERTY_RO(totalGlyphCount, getTotalGlyphCount);
+    NCB_PROPERTY_RO(totalCharCount, getTotalCharCount);
+    NCB_PROPERTY_RO(maxWidth, getMaxWidth);
+    NCB_PROPERTY_RO(maxHeight, getMaxHeight);
+    NCB_PROPERTY_RO(isValid, getIsValid);
+};
+
 // RichText クラス (静的メソッドと定数)
 NCB_REGISTER_CLASS(RichText)
 {
@@ -1093,6 +1207,7 @@ NCB_REGISTER_CLASS(RichText)
     NCB_SUBCLASS(Appearance, RichTextAppearance);
     NCB_SUBCLASS(Layout, RichTextLayout);
     NCB_SUBCLASS(ParagraphLayout, RichTextParagraphLayout);
+    NCB_SUBCLASS(StyledLayout, RichTextStyledLayout);
 }
 
 // LayerExRichText インスタンスフック
@@ -1119,6 +1234,7 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_METHOD(drawParagraph);
     NCB_METHOD_RAW_CALLBACK(drawStyledText, LayerExRichText_drawStyledText_RawCallback, 0);
     NCB_METHOD_RAW_CALLBACK(drawParagraphLayout, LayerExRichText_drawParagraphLayout_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(drawStyledLayout, LayerExRichText_drawStyledLayout_RawCallback, 0);
     NCB_METHOD_RAW_CALLBACK(drawRectEx, LayerExRichText_drawRect_RawCallback, 0);
 
     // 計測メソッド

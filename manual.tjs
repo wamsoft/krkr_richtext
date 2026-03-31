@@ -228,6 +228,91 @@ class RichText {
 	}
 
 	/**
+	 * スタイルタグ付きテキストのレイアウトクラス
+	 * @description
+	 * スタイルタグ付きテキストのレイアウト計算結果を保持します。
+	 * レイアウトと描画を分離することで、同一テキストの再描画や
+	 * 文字送りアニメーションを効率的に実現できます。
+	 *
+	 * 使用例:
+	 *   var sl = new RichText.StyledLayout();
+	 *   sl.layout(
+	 *       "<style:bold>太字</style>と通常テキスト",
+	 *       400, 300,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       %[ "default": normalStyle, "bold": boldStyle ],
+	 *       %[ "default": normalApp, "bold": boldApp ]
+	 *   );
+	 *   layer.drawStyledLayout(sl, 10, 10);
+	 */
+	class StyledLayout {
+
+		/**
+		 * コンストラクタ
+		 */
+		function StyledLayout();
+
+		/**
+		 * テキストのレイアウトを計算
+		 * @param text スタイルタグ付きテキスト
+		 * @param maxWidth 最大幅
+		 * @param maxHeight 最大高さ
+		 * @param hAlign 水平アライン (RichText.HALIGN_LEFT/CENTER/RIGHT)
+		 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
+		 * @param styles Style 単体、またはスタイル名→Style の辞書
+		 * @param appearances Appearance 単体、またはスタイル名→Appearance の辞書
+		 * @param lineSpacing 行間（省略時: 0）
+		 * @description
+		 * styles / appearances に単体オブジェクトを渡すと "default" キーとして扱われます。
+		 *
+		 * 使用例:
+		 *   // 単一スタイル
+		 *   sl.layout(text, 400, 300,
+		 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+		 *       style, appearance);
+		 *
+		 *   // 複数スタイル
+		 *   sl.layout(text, 400, 300,
+		 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+		 *       %[ "default": normalStyle, "bold": boldStyle ],
+		 *       %[ "default": normalApp, "bold": boldApp ]);
+		 */
+		function layout(text, maxWidth, maxHeight, hAlign, vAlign, styles, appearances, lineSpacing=0);
+
+		/**
+		 * 行数（読み取り専用）
+		 */
+		property lineCount;
+
+		/**
+		 * 総グリフ数（読み取り専用）
+		 * @description 文字送りアニメーションの上限値に使用
+		 */
+		property totalGlyphCount;
+
+		/**
+		 * 総文字数（読み取り専用）
+		 */
+		property totalCharCount;
+
+		/**
+		 * レイアウトの最大幅（読み取り専用）
+		 */
+		property maxWidth;
+
+		/**
+		 * レイアウトの最大高さ（読み取り専用）
+		 */
+		property maxHeight;
+
+		/**
+		 * レイアウトが有効かどうか（読み取り専用）
+		 * @description layout() 呼び出し後に true になります
+		 */
+		property isValid;
+	}
+
+	/**
 	 * 矩形クラス
 	 */
 	class Rect {
@@ -343,6 +428,69 @@ class Layer {
 	 *   );
 	 */
 	function drawTaggedText(text, rect, hAlign, vAlign, defaultStyle, defaultAppearance);
+
+	/**
+	 * スタイルタグ付きテキストを描画
+	 * @param text スタイルタグ付きテキスト
+	 * @param x 描画領域の左端
+	 * @param y 描画領域の上端
+	 * @param width 描画領域の幅
+	 * @param height 描画領域の高さ
+	 * @param hAlign 水平アライン (RichText.HALIGN_LEFT/CENTER/RIGHT)
+	 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
+	 * @param styles Style 単体、またはスタイル名→Style の辞書
+	 * @param appearances Appearance 単体、またはスタイル名→Appearance の辞書
+	 * @param lineSpacing 行間（省略時: 0）
+	 * @return 実際の描画領域の辞書
+	 * @description
+	 * <style:名前> タグでスタイルを切り替えながらテキストを描画します。
+	 * styles / appearances に単体オブジェクトを渡すと "default" キーとして扱われます。
+	 *
+	 * 使用例:
+	 *   // 単一スタイルで描画
+	 *   layer.drawStyledText(
+	 *       "テキスト",
+	 *       10, 10, 400, 300,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       style, app
+	 *   );
+	 *
+	 *   // 複数スタイルで描画
+	 *   var styles = %[ "default": normalStyle, "bold": boldStyle ];
+	 *   var apps = %[ "default": normalApp, "bold": boldApp ];
+	 *   layer.drawStyledText(
+	 *       "通常<style:bold>太字</style>通常",
+	 *       10, 10, 400, 300,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       styles, apps
+	 *   );
+	 */
+	function drawStyledText(text, x, y, width, height, hAlign, vAlign, styles, appearances, lineSpacing=0);
+
+	/**
+	 * レイアウト済み StyledLayout を描画
+	 * @param styledLayout RichText.StyledLayout オブジェクト
+	 * @param x 描画X座標
+	 * @param y 描画Y座標
+	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @return 実際の描画領域の辞書
+	 * @description
+	 * 事前にレイアウト計算済みの StyledLayout を描画します。
+	 * maxGlyphs を指定することで文字送りアニメーションが実現できます。
+	 *
+	 * 使用例:
+	 *   var sl = new RichText.StyledLayout();
+	 *   sl.layout(text, 400, 300,
+	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
+	 *       style, app);
+	 *
+	 *   // 全描画
+	 *   layer.drawStyledLayout(sl, 10, 10);
+	 *
+	 *   // 文字送り（最初の5グリフだけ描画）
+	 *   layer.drawStyledLayout(sl, 10, 10, 5);
+	 */
+	function drawStyledLayout(styledLayout, x, y, maxGlyphs=-1);
 
 	// =========================================================================
 	// 計測メソッド
