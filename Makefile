@@ -2,9 +2,9 @@ SHELL = /bin/bash
 
 # fontdata ターゲットは VCPKG_ROOT 不要
 ifeq ($(filter fontdata,$(MAKECMDGOALS)),)
-ifeq ($(VCPKG_ROOT),)
-$(error Variables VCPKG_ROOT not set correctly.)
-endif
+#ifeq ($(VCPKG_ROOT),)
+#$(error Variables VCPKG_ROOT not set correctly.)
+#endif
 endif
 
 ifeq ($(shell type cygpath >& /dev/null && echo true),true)

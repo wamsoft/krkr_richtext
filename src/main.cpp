@@ -19,6 +19,10 @@
 
 using namespace richtext;
 
+// RichTextRender (TextRender 互換クラス)
+// ncbind.hpp の後・richtext.hpp の後にインクルード
+#include "RichTextRender.hpp"
+
 // ============================================================================
 // ログ出力
 // ============================================================================
@@ -1464,6 +1468,487 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
     NCB_PROPERTY(useCache, getUseCache, setUseCache);
     NCB_METHOD(clearCache);
     NCB_METHOD(setCacheMaxSize);
+}
+
+// ============================================================================
+// RichTextRender TJS バインディング
+// ============================================================================
+
+/**
+ * RichTextRender の TJS ラッパー
+ * ncbind で TJS2 クラスとして公開する
+ */
+class RichTextRenderWrapper {
+public:
+    RichTextRenderWrapper() {
+        // TJS コールバックはバインド後に設定される
+    }
+
+    void setRenderSize(float w, float h) { render_.setRenderSize(w, h); }
+
+    void setDefault(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
+        render_.setDefaultFromDict(dict);
+    }
+
+    void setOption(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
+        render_.setOptionFromDict(dict);
+    }
+
+    void setFont(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
+        render_.setFontFromDict(dict);
+    }
+
+    void resetFont() { render_.resetFont(); }
+
+    void setStyle(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
+        render_.setStyleFromDict(dict);
+    }
+
+    void resetStyle() { render_.resetStyle(); }
+
+    void clear() { render_.clear(); }
+
+    void newline() { render_.newline(); }
+
+    void done() { render_.done(); }
+
+    // プロパティ
+    bool getRenderOver() const { return render_.getRenderOver(); }
+    int getRenderLines() const { return render_.getRenderLines(); }
+    int getRenderCount() const { return render_.getRenderCount(); }
+    float getRenderDelay() const { return render_.getRenderDelay(); }
+    float getRenderLeft() const { return render_.getRenderLeft(); }
+    float getRenderTop() const { return render_.getRenderTop(); }
+    float getRenderRight() const { return render_.getRenderRight(); }
+    float getRenderBottom() const { return render_.getRenderBottom(); }
+
+    ttstr getRenderText() const {
+        return ttstr(reinterpret_cast<const tjs_char*>(render_.getRenderText().c_str()));
+    }
+
+    float getTimeScale() const { return render_.getTimeScale(); }
+    void setTimeScale(float v) { render_.setTimeScale(v); }
+
+    float getFontScale() const { return render_.getFontScale(); }
+    void setFontScale(float v) { render_.setFontScale(v); }
+
+    // デフォルトプロパティ
+    ttstr getDefaultFace() const {
+        return ttstr(reinterpret_cast<const tjs_char*>(render_.getDefaultFace().c_str()));
+    }
+    void setDefaultFace(const tjs_char* v) {
+        render_.setDefaultFace(std::u16string(reinterpret_cast<const char16_t*>(v)));
+    }
+
+    float getDefaultFontSize() const { return render_.getDefaultFontSize(); }
+    void setDefaultFontSize(float v) { render_.setDefaultFontSize(v); }
+    float getDefaultBigFontSize() const { return render_.getDefaultBigFontSize(); }
+    void setDefaultBigFontSize(float v) { render_.setDefaultBigFontSize(v); }
+    float getDefaultSmallFontSize() const { return render_.getDefaultSmallFontSize(); }
+    void setDefaultSmallFontSize(float v) { render_.setDefaultSmallFontSize(v); }
+    float getDefaultLineSize() const { return render_.getDefaultLineSize(); }
+    void setDefaultLineSize(float v) { render_.setDefaultLineSize(v); }
+    float getDefaultLineSpacing() const { return render_.getDefaultLineSpacing(); }
+    void setDefaultLineSpacing(float v) { render_.setDefaultLineSpacing(v); }
+    float getDefaultPitch() const { return render_.getDefaultPitch(); }
+    void setDefaultPitch(float v) { render_.setDefaultPitch(v); }
+    int getDefaultAlign() const { return render_.getDefaultAlign(); }
+    void setDefaultAlign(int v) { render_.setDefaultAlign(v); }
+    int getDefaultValign() const { return render_.getDefaultValign(); }
+    void setDefaultValign(int v) { render_.setDefaultValign(v); }
+    float getDefaultRubySize() const { return render_.getDefaultRubySize(); }
+    void setDefaultRubySize(float v) { render_.setDefaultRubySize(v); }
+    tjs_uint32 getDefaultChColor() const { return render_.getDefaultColor(); }
+    void setDefaultChColor(tjs_uint32 v) { render_.setDefaultColor(v); }
+    bool getDefaultShadow() const { return render_.getDefaultShadow(); }
+    void setDefaultShadow(bool v) { render_.setDefaultShadow(v); }
+    tjs_uint32 getDefaultShadowColor() const { return render_.getDefaultShadowColor(); }
+    void setDefaultShadowColor(tjs_uint32 v) { render_.setDefaultShadowColor(v); }
+    bool getDefaultEdge() const { return render_.getDefaultEdge(); }
+    void setDefaultEdge(bool v) { render_.setDefaultEdge(v); }
+    tjs_uint32 getDefaultEdgeColor() const { return render_.getDefaultEdgeColor(); }
+    void setDefaultEdgeColor(tjs_uint32 v) { render_.setDefaultEdgeColor(v); }
+    bool getDefaultBold() const { return render_.getDefaultBold(); }
+    void setDefaultBold(bool v) { render_.setDefaultBold(v); }
+    bool getDefaultItalic() const { return render_.getDefaultItalic(); }
+    void setDefaultItalic(bool v) { render_.setDefaultItalic(v); }
+
+    int calcShowCount(float time) const { return render_.calcShowCount(time); }
+    float calcLineOffset(int lineno) const { return render_.calcLineOffset(lineno); }
+
+    bool isLinkContains(int link, float x, float y) const {
+        return render_.isLinkContains(link, x, y);
+    }
+
+    int getLinkOfPosition(float x, float y) const {
+        return render_.getLinkOfPosition(x, y);
+    }
+
+    // TJS objthis 設定（コールバック用）
+    void setTJSObject(iTJSDispatch2* obj) { tjsObj_ = obj; }
+
+    // コールバック設定
+    void setupCallbacks() {
+        iTJSDispatch2* obj = tjsObj_;
+
+        // onEval コールバック
+        render_.setEvalCallback([obj](const std::u16string& name) -> std::u16string {
+            if (!obj) return std::u16string();
+            tTJSVariant result;
+            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onEval"), nullptr, &result, 1, params, obj))) {
+                ttstr str = result.GetString();
+                return std::u16string(reinterpret_cast<const char16_t*>(str.c_str()));
+            }
+            return std::u16string();
+        });
+
+        // onLabel コールバック
+        render_.setLabelResolver([obj](const std::string& label) -> float {
+            if (!obj) return 0.0f;
+            tTJSVariant result;
+            ttstr labelStr(label.c_str());
+            tTJSVariant param(labelStr);
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onLabel"), nullptr, &result, 1, params, obj))) {
+                return static_cast<float>(result.AsReal());
+            }
+            return 0.0f;
+        });
+
+        // onGetGraphSize コールバック
+        render_.setGraphSizeCallback([obj](const std::u16string& name, float& w, float& h) -> bool {
+            if (!obj) return false;
+            tTJSVariant result;
+            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onGetGraphSize"), nullptr, &result, 1, params, obj))) {
+                if (result.Type() == tvtObject) {
+                    iTJSDispatch2* dict = result.AsObjectNoAddRef();
+                    tTJSVariant wv, hv;
+                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("width"), nullptr, &wv, dict)))
+                        w = static_cast<float>(wv.AsReal());
+                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("height"), nullptr, &hv, dict)))
+                        h = static_cast<float>(hv.AsReal());
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    RichTextRender& getRender() { return render_; }
+
+private:
+    RichTextRender render_;
+    iTJSDispatch2* tjsObj_ = nullptr;
+};
+
+// render() RawCallback（省略可能引数対応）
+static tjs_error TJS_INTF_METHOD
+RichTextRender_render_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                   tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+    ttstr text = static_cast<ttstr>(*param[0]);
+    int autoIndent = (numparams >= 2) ? static_cast<int>(param[1]->AsInteger()) : 0;
+    float diff = (numparams >= 3) ? static_cast<float>(param[2]->AsReal()) : 0;
+    float all = (numparams >= 4) ? static_cast<float>(param[3]->AsReal()) : 0;
+    bool noResetDelay = (numparams >= 5) ? (param[4]->AsInteger() != 0) : false;
+
+    std::u16string u16text(reinterpret_cast<const char16_t*>(text.c_str()));
+    objthis->getRender().render(u16text, autoIndent, diff, all, noResetDelay);
+
+    if (result) *result = true;
+    return TJS_S_OK;
+}
+
+// getCharacters() RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_getCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                          tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    int start = (numparams >= 1) ? static_cast<int>(param[0]->AsInteger()) : 0;
+    int num = (numparams >= 2) ? static_cast<int>(param[1]->AsInteger()) : 0;
+
+    auto chars = objthis->getRender().getCharacters(start, num);
+
+    // TJS 配列に変換
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < chars.size(); i++) {
+        const auto& ci = chars[i];
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+
+        // text
+        tTJSVariant textVal(ttstr(reinterpret_cast<const tjs_char*>(ci.text.c_str())));
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("text"), nullptr, &textVal, dict);
+
+        // graph
+        if (!ci.graph.empty()) {
+            tTJSVariant graphVal(ttstr(reinterpret_cast<const tjs_char*>(ci.graph.c_str())));
+            dict->PropSet(TJS_MEMBERENSURE, TJS_W("graph"), nullptr, &graphVal, dict);
+        }
+
+        // x, y, cw, size
+        tTJSVariant xv(ci.x), yv(ci.y), cwv(ci.cw), sv(ci.size);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("x"), nullptr, &xv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("y"), nullptr, &yv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("cw"), nullptr, &cwv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("size"), nullptr, &sv, dict);
+
+        // face
+        tTJSVariant faceVal(ttstr(reinterpret_cast<const tjs_char*>(ci.face.c_str())));
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("face"), nullptr, &faceVal, dict);
+
+        // color, bold, italic, shadow, edge
+        tTJSVariant colorVal((tjs_int64)ci.color);
+        tTJSVariant boldVal((tjs_int)ci.bold);
+        tTJSVariant italicVal((tjs_int)ci.italic);
+        tTJSVariant shadowVal((tjs_int)ci.shadow);
+        tTJSVariant edgeVal((tjs_int)ci.edge);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("color"), nullptr, &colorVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("bold"), nullptr, &boldVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("italic"), nullptr, &italicVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("shadow"), nullptr, &shadowVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("edge"), nullptr, &edgeVal, dict);
+
+        // shadowColor, edgeColor
+        tTJSVariant scVal((tjs_int64)ci.shadowColor), ecVal((tjs_int64)ci.edgeColor);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("shadowColor"), nullptr, &scVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("edgeColor"), nullptr, &ecVal, dict);
+
+        // delay, link, linkName
+        tTJSVariant delayVal(ci.delay);
+        tTJSVariant linkVal((tjs_int)ci.link);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("delay"), nullptr, &delayVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("link"), nullptr, &linkVal, dict);
+
+        if (ci.link >= 0) {
+            tTJSVariant lnVal(ttstr(ci.linkName.c_str()));
+            dict->PropSet(TJS_MEMBERENSURE, TJS_W("linkName"), nullptr, &lnVal, dict);
+        }
+
+        // ruby
+        if (!ci.ruby.empty()) {
+            iTJSDispatch2* rubyArr = TJSCreateArrayObject();
+            for (size_t ri = 0; ri < ci.ruby.size(); ri++) {
+                iTJSDispatch2* rubyDict = TJSCreateDictionaryObject();
+                tTJSVariant rtxt(ttstr(reinterpret_cast<const tjs_char*>(ci.ruby[ri].text.c_str())));
+                tTJSVariant rx(ci.ruby[ri].x), ry(ci.ruby[ri].y), rsz(ci.ruby[ri].size);
+                rubyDict->PropSet(TJS_MEMBERENSURE, TJS_W("text"), nullptr, &rtxt, rubyDict);
+                rubyDict->PropSet(TJS_MEMBERENSURE, TJS_W("x"), nullptr, &rx, rubyDict);
+                rubyDict->PropSet(TJS_MEMBERENSURE, TJS_W("y"), nullptr, &ry, rubyDict);
+                rubyDict->PropSet(TJS_MEMBERENSURE, TJS_W("size"), nullptr, &rsz, rubyDict);
+                tTJSVariant rubyDictVar(rubyDict, rubyDict);
+                rubyArr->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(ri), &rubyDictVar, rubyArr);
+                rubyDict->Release();
+            }
+            tTJSVariant rubyArrVar(rubyArr, rubyArr);
+            dict->PropSet(TJS_MEMBERENSURE, TJS_W("ruby"), nullptr, &rubyArrVar, dict);
+            rubyArr->Release();
+        }
+
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+
+    if (result) {
+        *result = tTJSVariant(array, array);
+    }
+    array->Release();
+    return TJS_S_OK;
+}
+
+// getKeyWait() RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_getKeyWait_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                       tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    const auto& keyWaits = objthis->getRender().getKeyWaits();
+
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < keyWaits.size(); i++) {
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+        tTJSVariant posVal((tjs_int)keyWaits[i].charIndex);
+        tTJSVariant timeVal(keyWaits[i].delay);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("pos"), nullptr, &posVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("time"), nullptr, &timeVal, dict);
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+
+    if (result) {
+        *result = tTJSVariant(array, array);
+    }
+    array->Release();
+    return TJS_S_OK;
+}
+
+// getLinkNames() RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_getLinkNames_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                         tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    auto names = objthis->getRender().getLinkNames();
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < names.size(); i++) {
+        tTJSVariant nameVal(ttstr(names[i].c_str()));
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &nameVal, array);
+    }
+    if (result) {
+        *result = tTJSVariant(array, array);
+    }
+    array->Release();
+    return TJS_S_OK;
+}
+
+// getLinkRects() RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_getLinkRects_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                         tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+    int link = static_cast<int>(param[0]->AsInteger());
+    auto rects = objthis->getRender().getLinkRects(link);
+
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < rects.size(); i++) {
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+        tTJSVariant lv(rects[i].left), tv(rects[i].top);
+        tTJSVariant wv(rects[i].width()), hv(rects[i].height());
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("left"), nullptr, &lv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("top"), nullptr, &tv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("width"), nullptr, &wv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("height"), nullptr, &hv, dict);
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+    if (result) {
+        *result = tTJSVariant(array, array);
+    }
+    array->Release();
+    return TJS_S_OK;
+}
+
+// getLinkCharacters() RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_getLinkCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                              tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+    int link = static_cast<int>(param[0]->AsInteger());
+
+    // getCharacters と同じフォーマットで返す
+    auto chars = objthis->getRender().getLinkCharacters(link);
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < chars.size(); i++) {
+        const auto& ci = chars[i];
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+        tTJSVariant textVal(ttstr(reinterpret_cast<const tjs_char*>(ci.text.c_str())));
+        tTJSVariant xv(ci.x), yv(ci.y), cwv(ci.cw);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("text"), nullptr, &textVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("x"), nullptr, &xv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("y"), nullptr, &yv, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("cw"), nullptr, &cwv, dict);
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+    if (result) {
+        *result = tTJSVariant(array, array);
+    }
+    array->Release();
+    return TJS_S_OK;
+}
+
+// RichTextRender ncbind 登録
+NCB_GET_INSTANCE_HOOK(RichTextRenderWrapper)
+{
+    NCB_INSTANCE_GETTER(objthis) {
+        ClassT* obj = GetNativeInstance(objthis);
+        if (!obj) {
+            obj = new ClassT();
+            SetNativeInstance(objthis, obj);
+            obj->setTJSObject(objthis);
+            obj->setupCallbacks();
+        }
+        return obj;
+    }
+    ~NCB_GET_INSTANCE_HOOK_CLASS() {
+    }
+};
+
+NCB_REGISTER_CLASS_DIFFER(TextRenderBase, RichTextRenderWrapper) {
+    NCB_CONSTRUCTOR(());
+
+    // 設定
+    NCB_METHOD(setRenderSize);
+    NCB_METHOD(setDefault);
+    NCB_METHOD(setOption);
+    NCB_METHOD(setFont);
+    NCB_METHOD(resetFont);
+    NCB_METHOD(setStyle);
+    NCB_METHOD(resetStyle);
+
+    // レンダリング
+    NCB_METHOD(clear);
+    NCB_METHOD_RAW_CALLBACK(render, RichTextRender_render_RawCallback, 0);
+    NCB_METHOD(newline);
+    NCB_METHOD(done);
+
+    // 結果プロパティ
+    NCB_PROPERTY_RO(renderOver, getRenderOver);
+    NCB_PROPERTY_RO(renderLines, getRenderLines);
+    NCB_PROPERTY_RO(renderCount, getRenderCount);
+    NCB_PROPERTY_RO(renderDelay, getRenderDelay);
+    NCB_PROPERTY_RO(renderLeft, getRenderLeft);
+    NCB_PROPERTY_RO(renderTop, getRenderTop);
+    NCB_PROPERTY_RO(renderRight, getRenderRight);
+    NCB_PROPERTY_RO(renderBottom, getRenderBottom);
+    NCB_PROPERTY_RO(renderText, getRenderText);
+
+    NCB_PROPERTY(timeScale, getTimeScale, setTimeScale);
+    NCB_PROPERTY(fontScale, getFontScale, setFontScale);
+
+    // デフォルトプロパティ
+    NCB_PROPERTY(defaultFace, getDefaultFace, setDefaultFace);
+    NCB_PROPERTY(defaultFontSize, getDefaultFontSize, setDefaultFontSize);
+    NCB_PROPERTY(defaultBigFontSize, getDefaultBigFontSize, setDefaultBigFontSize);
+    NCB_PROPERTY(defaultSmallFontSize, getDefaultSmallFontSize, setDefaultSmallFontSize);
+    NCB_PROPERTY(defaultLineSize, getDefaultLineSize, setDefaultLineSize);
+    NCB_PROPERTY(defaultLineSpacing, getDefaultLineSpacing, setDefaultLineSpacing);
+    NCB_PROPERTY(defaultPitch, getDefaultPitch, setDefaultPitch);
+    NCB_PROPERTY(defaultAlign, getDefaultAlign, setDefaultAlign);
+    NCB_PROPERTY(defaultValign, getDefaultValign, setDefaultValign);
+    NCB_PROPERTY(defaultRubySize, getDefaultRubySize, setDefaultRubySize);
+    NCB_PROPERTY(defaultChColor, getDefaultChColor, setDefaultChColor);
+    NCB_PROPERTY(defaultShadow, getDefaultShadow, setDefaultShadow);
+    NCB_PROPERTY(defaultShadowColor, getDefaultShadowColor, setDefaultShadowColor);
+    NCB_PROPERTY(defaultEdge, getDefaultEdge, setDefaultEdge);
+    NCB_PROPERTY(defaultEdgeColor, getDefaultEdgeColor, setDefaultEdgeColor);
+    NCB_PROPERTY(defaultBold, getDefaultBold, setDefaultBold);
+    NCB_PROPERTY(defaultItalic, getDefaultItalic, setDefaultItalic);
+
+    // 結果取得メソッド
+    NCB_METHOD_RAW_CALLBACK(getCharacters, RichTextRender_getCharacters_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(getKeyWait, RichTextRender_getKeyWait_RawCallback, 0);
+    NCB_METHOD(calcShowCount);
+    NCB_METHOD(calcLineOffset);
+
+    // リンク
+    NCB_METHOD_RAW_CALLBACK(getLinkNames, RichTextRender_getLinkNames_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(getLinkRects, RichTextRender_getLinkRects_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(getLinkCharacters, RichTextRender_getLinkCharacters_RawCallback, 0);
+    NCB_METHOD(isLinkContains);
+    NCB_METHOD(getLinkOfPosition);
 }
 
 // 初期化・終了コールバック

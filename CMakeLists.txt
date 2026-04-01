@@ -23,6 +23,7 @@ krkrz_plugin(richtext
         ${RICHTEXT_DIR}/include
     SOURCES
         src/main.cpp
+        src/EscapeConverter.cpp
     LIBRARIES
         richtext_lib
 )

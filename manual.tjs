@@ -625,7 +625,9 @@ class RichText {
 		 *    - maxGlyphs: 最大グリフ数（-1で全て）
 		 *
 		 * @return コピー矩形の配列。各要素は辞書:
-		 *   %[srcX, srcY, srcWidth, srcHeight, dstX, dstY, displayIndex]
+		 *   %[srcX, srcY, srcWidth, srcHeight, dstX, dstY, displayIndex, delay, linkIndex]
+		 *   delay: 表示タイミング（ms、-1 = 未設定）
+		 *   linkIndex: リンク番号（-1 = なし）
 		 */
 		function getCopyRects(/* overloaded */);
 	}
@@ -970,6 +972,382 @@ class Layer {
 */
 
 // =============================================================================
+// TextRenderBase クラス（TextRender 互換）
+// =============================================================================
+
+/**
+ * TextRender 互換テキストレンダリングクラス
+ *
+ * ../textrender の TextRender クラスと API 互換のインターフェースを提供します。
+ * 内部では richtext ライブラリ（StyledLayout）を使用して描画を行います。
+ *
+ * TextRender のエスケープ記法入りテキストを受け取り、レイアウト結果を
+ * 文字情報・タイミング情報・リンク情報として返します。
+ *
+ * 入力用特殊テキスト書式:
+ *   \n      改行
+ *   \t      タブ文字
+ *   \i      インデント開始（次行から）※非対応
+ *   \r      インデント解除（次行から）※非対応
+ *   \w      空白相当分表示位置を進める
+ *   \k      キー入力待ち情報を生成
+ *   \x      nul文字相当
+ *   \文字   エスケープ指定（特殊機能を無効化）
+ *   [xxxx]         ルビ指定（次の1文字にかかる）
+ *   [xxxx,文字数]  ルビ指定（次の指定個数の文字にかかる）
+ *
+ * フォント指定:
+ *   %f名前;     フォントフェイス指定
+ *   %bX         ボールド指定（0:off 1:on その他:デフォルト）
+ *   %iX         イタリック指定（0:off 1:on その他:デフォルト）
+ *   %sX         影指定（0:off 1:on その他:デフォルト）
+ *   %eX         エッジ指定（0:off 1:on その他:デフォルト）
+ *   %数値;      フォントサイズ指定（デフォルトに対するパーセント）
+ *   %B          大サイズフォント
+ *   %S          小サイズフォント
+ *   #xxxxxx;    色指定（16進RGB）
+ *   %s#xxxxxx;  影色指定
+ *   %e#xxxxxx;  エッジ色指定
+ *   %r          フォントリセット
+ *
+ * スタイル指定:
+ *   %C          センタリング
+ *   %R          右よせ
+ *   %L          左寄せ
+ *   %p数値;     ピッチ（字間）
+ *
+ * 特殊指定:
+ *   %d数値;     文字あたり表示時間（標準に対するパーセント、100で標準速度）
+ *   %a数値;     文字あたり表示時間（ms）
+ *   %w数値;     時間待ち（1文字時間に対するパーセント、100で1文字分）
+ *   %t数値;     時間待ち（ms）
+ *   %D数値;     時間同期指定（ms）
+ *   %D$xxx;     時間同期指定（ラベル参照）
+ *
+ *   $xxx;       埋め込み指定（変数名）※onEval で処理
+ *   &xxx;       グラフィック文字指定（画像名）※onGetGraphSize で処理
+ *
+ * リンク指定:
+ *   %lリンク名;  リンク指定開始
+ *   %l;          リンク指定解除
+ *
+ * 非対応:
+ *   縦書き、rubyoffset、ワードブレーク制御（%k0/%k1）
+ *
+ * 使用フロー:
+ *   clear() → setFont/setStyle → render() [複数回可] → done()
+ *   → getCharacters() / calcShowCount() / getKeyWait() 等で結果取得
+ *
+ * 使用例:
+ *   var tr = new TextRenderBase();
+ *   tr.setDefault(%[ face: "MSゴシック", fontsize: 24, color: 0xFFFFFF ]);
+ *   tr.setRenderSize(400, 300);
+ *   tr.clear();
+ *   tr.render("こんにちは%B世界%r！\n2行目", 0, 30, 0, false);
+ *   tr.done();
+ *
+ *   var chars = tr.getCharacters(0, 0);  // 全文字情報取得
+ *   var count = tr.calcShowCount(500);    // 500ms時点の表示文字数
+ */
+class TextRenderBase {
+
+	/**
+	 * コンストラクタ
+	 */
+	function TextRenderBase();
+
+	// ------------------------------------------------------------------
+	// レンダリング設定
+	// ------------------------------------------------------------------
+
+	/**
+	 * レンダリングオプションの設定
+	 * @param elm 辞書
+	 * @description
+	 * 設定可能なキー:
+	 *   ignore_color  色指定を無視
+	 *   ignore_size   サイズ指定を無視
+	 *   ignore_type   フォント種別指定を無視（bold/italic/shadow/edge）
+	 *   ignore_face   フォントフェイス指定を無視
+	 *   ignore_style  スタイル指定を無視（align/pitch）
+	 *   ignore_ruby   ルビ指定を無視
+	 *   ignore_delay  時間指定を無視
+	 *   width_time_scale  文字幅による時間補正（0:しない 1:する）
+	 *   locale        ロケール文字列（例: "ja_JP"）
+	 */
+	function setOption(elm);
+
+	/**
+	 * デフォルト値の設定
+	 * @param elm 辞書
+	 * @description
+	 * 設定可能なキー:
+	 *   face          フォントフェイス
+	 *   fontsize      フォントサイズ
+	 *   bigfontsize   大サイズフォントサイズ（%B 用）
+	 *   smallfontsize 小サイズフォントサイズ（%S 用）
+	 *   bold          太字
+	 *   italic        イタリック
+	 *   color         文字色（RGB）
+	 *   shadow        影指定
+	 *   shadowcolor   影色
+	 *   edge          縁指定
+	 *   edgecolor     縁色
+	 *   linespacing   行間
+	 *   pitch         文字間
+	 *   linesize      行サイズ
+	 *   align         水平アライン（-1:左 0:中央 1:右）
+	 *   valign        垂直アライン（-1:上 0:中央 1:下）
+	 *   rubysize      ルビサイズ
+	 */
+	function setDefault(elm);
+
+	/**
+	 * レンダリング領域のサイズ指定
+	 * @param width 領域横幅（0で無制限）
+	 * @param height 領域縦幅（0で無制限）
+	 */
+	function setRenderSize(width, height);
+
+	/**
+	 * レンダリング時間補正
+	 */
+	property timeScale;
+
+	/**
+	 * フォントサイズ補正倍率
+	 */
+	property fontScale;
+
+	// デフォルト値プロパティ
+	property defaultFace;
+	property defaultFontSize;
+	property defaultBigFontSize;
+	property defaultSmallFontSize;
+	property defaultLineSize;
+	property defaultLineSpacing;
+	property defaultPitch;
+	property defaultAlign;
+	property defaultValign;
+	property defaultRubySize;
+	property defaultChColor;
+	property defaultShadow;
+	property defaultShadowColor;
+	property defaultEdge;
+	property defaultEdgeColor;
+	property defaultBold;
+	property defaultItalic;
+
+	// ------------------------------------------------------------------
+	// レンダリング処理
+	// clear → render [複数回] → done で一連の処理が完了する
+	// ------------------------------------------------------------------
+
+	/**
+	 * レンダリング結果の消去
+	 */
+	function clear();
+
+	/**
+	 * フォント指定
+	 * @param elm 辞書
+	 * @description
+	 * 設定可能なキー:
+	 *   face, fontsize, bold, italic, color, shadow, shadowcolor, edge, edgecolor
+	 */
+	function setFont(elm);
+
+	/**
+	 * フォント状態をデフォルトに戻す
+	 */
+	function resetFont();
+
+	/**
+	 * スタイル指定
+	 * @param elm 辞書
+	 * @description
+	 * 設定可能なキー:
+	 *   linespacing, pitch, linesize, align, valign
+	 */
+	function setStyle(elm);
+
+	/**
+	 * スタイル指定をデフォルトに戻す
+	 */
+	function resetStyle();
+
+	/**
+	 * テキストのレンダリング
+	 * @param str レンダリングする文字列（エスケープ記法含む）
+	 * @param autoIndent 自動インデント指定（0:無効 1:有効 -1:逆字下げ）※現在非対応
+	 * @param diff 一文字当たり表示時間（ms）
+	 * @param all 総時間指定（0は自動、ms）
+	 * @param noResetDelay true だと以前の表示時間を維持する
+	 * @return はみ出ることなくレンダリングに成功したら true
+	 * @description
+	 * clear() 後に複数回呼び出せます。done() を呼ぶまで結果は確定しません。
+	 */
+	function render(str, autoIndent=0, diff=0, all=0, noResetDelay=false);
+
+	/**
+	 * 新規行にする
+	 */
+	function newline();
+
+	/**
+	 * レンダリング完了
+	 * @description
+	 * render() で蓄積したテキストを一括でレイアウトし、
+	 * タイミング・リンク等の情報を確定します。
+	 */
+	function done();
+
+	// ------------------------------------------------------------------
+	// レンダリング処理用イベント（TJS 側で実装）
+	// ------------------------------------------------------------------
+
+	/**
+	 * レンダリング中の変数参照処理
+	 * @param name 変数名
+	 * @return 変数値（文字列）
+	 * @description
+	 * $xxx; 記法で参照されたときに呼ばれます。
+	 * 継承して上書き可能。
+	 */
+	function onEval(name);
+
+	/**
+	 * レンダリング中のラベル参照処理
+	 * @param name ラベル名
+	 * @return tick値（ms）
+	 * @description
+	 * %D$xxx; 記法で参照されたときに呼ばれます。
+	 */
+	function onLabel(name);
+
+	/**
+	 * グラフィック文字のサイズ情報取得
+	 * @param name 画像名
+	 * @return %[width: 横幅, height: 縦幅]
+	 * @description
+	 * &xxx; 記法で参照されたときに呼ばれます。
+	 */
+	function onGetGraphSize(name);
+
+	// ------------------------------------------------------------------
+	// レンダリング結果情報
+	// ------------------------------------------------------------------
+
+	/// レンダリング結果が領域をはみ出ているかどうか
+	property renderOver;
+	/// レンダリング結果の行数
+	property renderLines;
+	/// レンダリング結果の文字数
+	property renderCount;
+	/// レンダリング結果の総表示時間
+	property renderDelay;
+
+	/// レンダリング結果領域情報
+	property renderLeft;
+	property renderTop;
+	property renderRight;
+	property renderBottom;
+
+	/// レンダリング結果テキスト（エスケープ除去済み）
+	property renderText;
+
+	/**
+	 * キー待ち情報の配列を返す
+	 * @return [%[pos: 文字位置, time: 時間], ...]
+	 */
+	function getKeyWait();
+
+	/**
+	 * 指定時間での表示文字数を返す
+	 * @param time 時間（ms）
+	 * @return 表示文字数
+	 */
+	function calcShowCount(time);
+
+	/**
+	 * 指定行のオフセット値を返す
+	 * @param lineno 行番号
+	 * @return オフセット値
+	 */
+	function calcLineOffset(lineno);
+
+	/**
+	 * レンダリング結果文字情報の取得
+	 * @param start 開始文字位置
+	 * @param num 取得文字数（0で末尾まで）
+	 * @return 描画情報の配列
+	 * @description
+	 * 各要素は辞書で以下のキーを持ちます:
+	 *   text       表示するテキスト
+	 *   graph      グラフィック表示時の画像名（通常文字は void）
+	 *   x          表示座標X
+	 *   y          表示座標Y
+	 *   cw         表示幅
+	 *   size       フォントサイズ
+	 *   face       フォントフェイス
+	 *   color      表示色
+	 *   bold       BOLD指定
+	 *   italic     ITALIC指定
+	 *   shadow     影指定
+	 *   edge       縁指定
+	 *   shadowColor  影の色
+	 *   edgeColor    縁の色
+	 *   delay      表示タイミング（表示開始時からの経過時間）
+	 *   link       リンク番号（無い場合は-1）
+	 *   linkName   リンク名（無い場合は void）
+	 *   ruby       ルビ配列 [%[text, x, y, size], ...]
+	 */
+	function getCharacters(start, num);
+
+	// ------------------------------------------------------------------
+	// リンク
+	// ------------------------------------------------------------------
+
+	/**
+	 * 含まれるリンク名の一覧を返す
+	 * @return リンク名の配列（重複する名前もそのまま列挙）
+	 */
+	function getLinkNames();
+
+	/**
+	 * リンクの領域情報を取得
+	 * @param link リンク番号
+	 * @return 領域情報の配列 [%[left, top, width, height], ...]
+	 * @description 複数行にまたがる場合は複数の矩形が返ります
+	 */
+	function getLinkRects(link);
+
+	/**
+	 * リンクに属する文字情報を取得
+	 * @param link リンク番号
+	 * @return 描画情報の配列（getCharacters と同形式）
+	 */
+	function getLinkCharacters(link);
+
+	/**
+	 * リンク中に含まれるかどうかの判定
+	 * @param link リンク番号
+	 * @param x X位置
+	 * @param y Y位置
+	 * @return リンク中に含まれているなら true
+	 */
+	function isLinkContains(link, x, y);
+
+	/**
+	 * 指定位置のリンク番号を返す
+	 * @param x X位置
+	 * @param y Y位置
+	 * @return リンク番号（-1:なし）
+	 */
+	function getLinkOfPosition(x, y);
+}
+
+// =============================================================================
 // 使用例
 // =============================================================================
 
@@ -1034,4 +1412,67 @@ for (var i = 1; i <= sl.totalGlyphCount; i++) {
     layer.drawStyledLayout(sl, 10, 10, i);
     // ... フレーム待ち ...
 }
+
+// TextRenderBase 使用例（TextRender 互換）
+
+// クラスを継承してコールバックを実装
+class MyTextRender extends TextRenderBase {
+    function onEval(name) {
+        // 変数参照（$xxx; 記法用）
+        return Scripts.eval(name);
+    }
+    function onLabel(name) {
+        // ラベル時間参照（%D$xxx; 記法用）
+        return 0;
+    }
+    function onGetGraphSize(name) {
+        // グラフィック文字サイズ（&xxx; 記法用）
+        return %[ width: 32, height: 32 ];
+    }
+}
+
+var tr = new MyTextRender();
+tr.setDefault(%[
+    face: "MSゴシック",
+    fontsize: 24,
+    color: 0xFFFFFF,
+    shadow: true,
+    shadowcolor: 0x000000,
+    edge: true,
+    edgecolor: 0x000000,
+    linespacing: 4,
+    align: -1
+]);
+tr.setRenderSize(400, 300);
+
+// レンダリング
+tr.clear();
+tr.render("こんにちは%B世界%r！\n#FF0000;赤い文字#FFFFFF;", 0, 30, 0, false);
+tr.render("[ルビ]漢%lリンク1;リンクテスト%l;", 0, 30, 0, true);
+tr.done();
+
+// 結果取得
+Debug.message("行数: " + tr.renderLines);
+Debug.message("文字数: " + tr.renderCount);
+Debug.message("表示時間: " + tr.renderDelay);
+
+// 文字送り
+var chars = tr.getCharacters(0, 0);
+for (var i = 0; i < chars.count; i++) {
+    var c = chars[i];
+    Debug.message(c.text + " x=" + c.x + " y=" + c.y + " delay=" + c.delay);
+}
+
+// 時間ベースの表示文字数
+var showCount = tr.calcShowCount(500);  // 500ms時点
+
+// リンク判定
+var linkNames = tr.getLinkNames();
+var linkNo = tr.getLinkOfPosition(100, 50);
+if (linkNo >= 0) {
+    var rects = tr.getLinkRects(linkNo);
+}
+
+// キー待ち情報
+var keyWaits = tr.getKeyWait();
 */
