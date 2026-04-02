@@ -601,6 +601,17 @@ public:
 
     // isValid
     bool getIsValid() const { return layout_.isValid(); }
+
+    // タイミング解決
+    void resolveAllTimings(float timeScale, bool widthTimeScale) {
+        layout_.resolveAllTimings(timeScale, widthTimeScale);
+    }
+
+    float getTotalRenderDelay() const { return layout_.getTotalRenderDelay(); }
+
+    int calcShowCount(float time) const { return layout_.calcShowCount(time); }
+
+    // getKeyWaits / getResolvedTimings は RawCallback で実装（後述）
 };
 
 // RichTextTextureAtlas::addStyledLayout の実装（RichTextStyledLayout 定義後）
@@ -1120,6 +1131,83 @@ RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
     return TJS_S_OK;
 }
 
+// RichTextStyledLayout::resolveAllTimings RawCallback（省略可能引数対応）
+static tjs_error TJS_INTF_METHOD
+RichTextStyledLayout_resolveAllTimings_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                                   tTJSVariant** param, RichTextStyledLayout* objthis)
+{
+    float timeScale = (numparams >= 1) ? static_cast<float>(param[0]->AsReal()) : 1.0f;
+    bool widthTimeScale = (numparams >= 2) ? (param[1]->AsInteger() != 0) : false;
+    objthis->layout_.resolveAllTimings(timeScale, widthTimeScale);
+    return TJS_S_OK;
+}
+
+// KeyWaits → TJS 配列変換ヘルパー
+static tTJSVariant keyWaitsToVariant(const std::vector<KeyWaitInfo>& keyWaits) {
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < keyWaits.size(); i++) {
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+        tTJSVariant posVal((tjs_int)keyWaits[i].charIndex);
+        tTJSVariant timeVal(keyWaits[i].delay);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("pos"), nullptr, &posVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("time"), nullptr, &timeVal, dict);
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+    tTJSVariant result(array, array);
+    array->Release();
+    return result;
+}
+
+// ResolvedTimings → TJS 配列変換ヘルパー
+static tTJSVariant resolvedTimingsToVariant(const std::vector<ResolvedTiming>& timings) {
+    iTJSDispatch2* array = TJSCreateArrayObject();
+    for (size_t i = 0; i < timings.size(); i++) {
+        iTJSDispatch2* dict = TJSCreateDictionaryObject();
+        tTJSVariant charIndexVal((tjs_int)timings[i].charIndex);
+        tTJSVariant delayVal(timings[i].delay);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("charIndex"), nullptr, &charIndexVal, dict);
+        dict->PropSet(TJS_MEMBERENSURE, TJS_W("delay"), nullptr, &delayVal, dict);
+        tTJSVariant dictVar(dict, dict);
+        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
+        dict->Release();
+    }
+    tTJSVariant result(array, array);
+    array->Release();
+    return result;
+}
+
+// getKeyWaits RawCallback（StyledLayout / TextRenderBase 共用）
+template<typename T>
+static tjs_error TJS_INTF_METHOD
+getKeyWaits_RawCallback(tTJSVariant* result, tjs_int numparams,
+                        tTJSVariant** param, T* objthis);
+
+template<>
+tjs_error TJS_INTF_METHOD
+getKeyWaits_RawCallback<RichTextStyledLayout>(tTJSVariant* result, tjs_int numparams,
+                                              tTJSVariant** param, RichTextStyledLayout* objthis)
+{
+    if (result) *result = keyWaitsToVariant(objthis->layout_.getKeyWaits());
+    return TJS_S_OK;
+}
+
+// getResolvedTimings RawCallback（StyledLayout / TextRenderBase 共用）
+template<typename T>
+static tjs_error TJS_INTF_METHOD
+getResolvedTimings_RawCallback(tTJSVariant* result, tjs_int numparams,
+                               tTJSVariant** param, T* objthis);
+
+template<>
+tjs_error TJS_INTF_METHOD
+getResolvedTimings_RawCallback<RichTextStyledLayout>(tTJSVariant* result, tjs_int numparams,
+                                                     tTJSVariant** param, RichTextStyledLayout* objthis)
+{
+    if (result) *result = resolvedTimingsToVariant(objthis->layout_.getResolvedTimings());
+    return TJS_S_OK;
+}
+
 // TextureAtlas::getCopyRects RawCallback
 // 引数パターンで 3 つのオーバーロードを区別:
 //   (Layout, x, y, Appearance [, maxChars])          → TextLayout 版
@@ -1380,6 +1468,11 @@ NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
     NCB_PROPERTY_RO(maxHeight, getMaxHeight);
     NCB_PROPERTY_RO(isValid, getIsValid);
+    NCB_METHOD_RAW_CALLBACK(resolveAllTimings, RichTextStyledLayout_resolveAllTimings_RawCallback, 0);
+    NCB_PROPERTY_RO(totalRenderDelay, getTotalRenderDelay);
+    NCB_METHOD(calcShowCount);
+    NCB_METHOD_RAW_CALLBACK(getKeyWaits, getKeyWaits_RawCallback<RichTextStyledLayout>, 0);
+    NCB_METHOD_RAW_CALLBACK(getResolvedTimings, getResolvedTimings_RawCallback<RichTextStyledLayout>, 0);
 };
 
 // RichTextTextureAtlas サブクラス
@@ -1648,6 +1741,55 @@ private:
     iTJSDispatch2* tjsObj_ = nullptr;
 };
 
+// drawToLayer RawCallback
+static tjs_error TJS_INTF_METHOD
+RichTextRender_drawToLayer_RawCallback(tTJSVariant* result, tjs_int numparams,
+                                       tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    if (numparams < 3) return TJS_E_BADPARAMCOUNT;
+
+    // レイヤーオブジェクト
+    iTJSDispatch2* layerObj = param[0]->AsObjectNoAddRef();
+    if (!layerObj || layerObj->IsInstanceOf(0, NULL, NULL, TJS_W("Layer"), layerObj) != TJS_S_TRUE) {
+        TVPThrowExceptionMessage(TJS_W("argument must be a Layer"));
+    }
+
+    float x = static_cast<float>(param[1]->AsReal());
+    float y = static_cast<float>(param[2]->AsReal());
+    int maxChars = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
+
+    // レイヤーバッファ情報を取得
+    tTJSVariant val;
+    layerObj->PropGet(0, TJS_W("imageWidth"), nullptr, &val, layerObj);
+    int width = static_cast<int>(val);
+    layerObj->PropGet(0, TJS_W("imageHeight"), nullptr, &val, layerObj);
+    int height = static_cast<int>(val);
+    layerObj->PropGet(0, TJS_W("mainImageBufferForWrite"), nullptr, &val, layerObj);
+    tjs_uint32* buffer = reinterpret_cast<tjs_uint32*>(static_cast<tjs_intptr_t>(val));
+    layerObj->PropGet(0, TJS_W("mainImageBufferPitch"), nullptr, &val, layerObj);
+    int pitch = static_cast<int>(val);
+
+    // TextRenderer でレイヤーに描画
+    TextRenderer renderer;
+    renderer.setCanvas(buffer, width, height, pitch);
+
+    const auto& layout = objthis->getRender().getStyledLayout();
+    richtext::RectF rect = renderer.drawStyledLayout(layout, x, y, maxChars);
+    renderer.sync();
+
+    // レイヤー更新通知
+    tTJSVariant updateVars[4] = {
+        static_cast<int>(rect.x), static_cast<int>(rect.y),
+        static_cast<int>(rect.width) + 1, static_cast<int>(rect.height) + 1
+    };
+    tTJSVariant* updateParams[4] = { &updateVars[0], &updateVars[1], &updateVars[2], &updateVars[3] };
+    tTJSVariant updateResult;
+    layerObj->FuncCall(0, TJS_W("update"), nullptr, &updateResult, 4, updateParams, layerObj);
+
+    if (result) *result = toVariant(rect);
+    return TJS_S_OK;
+}
+
 // render() RawCallback（省略可能引数対応）
 static tjs_error TJS_INTF_METHOD
 RichTextRender_render_RawCallback(tTJSVariant* result, tjs_int numparams,
@@ -1764,29 +1906,22 @@ RichTextRender_getCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
     return TJS_S_OK;
 }
 
-// getKeyWait() RawCallback
-static tjs_error TJS_INTF_METHOD
-RichTextRender_getKeyWait_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                       tTJSVariant** param, RichTextRenderWrapper* objthis)
+// getKeyWaits / getResolvedTimings の RichTextRenderWrapper 特殊化
+template<>
+tjs_error TJS_INTF_METHOD
+getKeyWaits_RawCallback<RichTextRenderWrapper>(tTJSVariant* result, tjs_int numparams,
+                                               tTJSVariant** param, RichTextRenderWrapper* objthis)
 {
-    const auto& keyWaits = objthis->getRender().getKeyWaits();
+    if (result) *result = keyWaitsToVariant(objthis->getRender().getKeyWaits());
+    return TJS_S_OK;
+}
 
-    iTJSDispatch2* array = TJSCreateArrayObject();
-    for (size_t i = 0; i < keyWaits.size(); i++) {
-        iTJSDispatch2* dict = TJSCreateDictionaryObject();
-        tTJSVariant posVal((tjs_int)keyWaits[i].charIndex);
-        tTJSVariant timeVal(keyWaits[i].delay);
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("pos"), nullptr, &posVal, dict);
-        dict->PropSet(TJS_MEMBERENSURE, TJS_W("time"), nullptr, &timeVal, dict);
-        tTJSVariant dictVar(dict, dict);
-        array->PropSetByNum(TJS_MEMBERENSURE, static_cast<tjs_int>(i), &dictVar, array);
-        dict->Release();
-    }
-
-    if (result) {
-        *result = tTJSVariant(array, array);
-    }
-    array->Release();
+template<>
+tjs_error TJS_INTF_METHOD
+getResolvedTimings_RawCallback<RichTextRenderWrapper>(tTJSVariant* result, tjs_int numparams,
+                                                      tTJSVariant** param, RichTextRenderWrapper* objthis)
+{
+    if (result) *result = resolvedTimingsToVariant(objthis->getRender().getStyledLayout().getResolvedTimings());
     return TJS_S_OK;
 }
 
@@ -1936,9 +2071,13 @@ NCB_REGISTER_CLASS_DIFFER(TextRenderBase, RichTextRenderWrapper) {
     NCB_PROPERTY(defaultBold, getDefaultBold, setDefaultBold);
     NCB_PROPERTY(defaultItalic, getDefaultItalic, setDefaultItalic);
 
+    // 描画
+    NCB_METHOD_RAW_CALLBACK(drawToLayer, RichTextRender_drawToLayer_RawCallback, 0);
+
     // 結果取得メソッド
     NCB_METHOD_RAW_CALLBACK(getCharacters, RichTextRender_getCharacters_RawCallback, 0);
-    NCB_METHOD_RAW_CALLBACK(getKeyWait, RichTextRender_getKeyWait_RawCallback, 0);
+    NCB_METHOD_RAW_CALLBACK(getKeyWaits, getKeyWaits_RawCallback<RichTextRenderWrapper>, 0);
+    NCB_METHOD_RAW_CALLBACK(getResolvedTimings, getResolvedTimings_RawCallback<RichTextRenderWrapper>, 0);
     NCB_METHOD(calcShowCount);
     NCB_METHOD(calcLineOffset);
 

@@ -715,6 +715,75 @@ class RichText {
 		 * @description layout() 呼び出し後に true になります
 		 */
 		property isValid;
+
+		// -----------------------------------------------------------------
+		// タイミング解決
+		// -----------------------------------------------------------------
+
+		/**
+		 * タイミング情報を解決する
+		 * @param timeScale 時間スケール係数（省略時: 1.0）
+		 * @param widthTimeScale 文字幅による時間補正を行うか（省略時: false）
+		 * @description
+		 * layout() で生成されたタイミング情報（<start>, <delay>, <wait>, <sync>, <keywait> タグ）
+		 * を解決し、各文字の表示開始時間を計算します。
+		 *
+		 * 明示的に呼ばなくても、getResolvedTimings / getKeyWaits / totalRenderDelay /
+		 * calcShowCount の初回アクセス時にデフォルト値（timeScale=1.0, widthTimeScale=false）
+		 * で自動的に解決されます。
+		 *
+		 * 使用例:
+		 *   sl.resolveAllTimings(1.0, false);
+		 *   // 倍速表示
+		 *   sl.resolveAllTimings(0.5, false);
+		 */
+		function resolveAllTimings(timeScale=1.0, widthTimeScale=false);
+
+		/**
+		 * 全体の最大表示遅延時間（ms）（読み取り専用）
+		 * @description
+		 * 全文字の表示が完了するまでの時間です。
+		 * 文字送りアニメーションのタイマー上限に使用します。
+		 */
+		property totalRenderDelay;
+
+		/**
+		 * 指定時間までに表示すべき文字数を計算
+		 * @param time 経過時間（ms）
+		 * @return 表示すべき文字数
+		 * @description
+		 * drawStyledLayout の maxChars 引数に渡すことで、
+		 * 時間ベースの文字送りアニメーションを実現できます。
+		 *
+		 * 使用例:
+		 *   var count = sl.calcShowCount(elapsed);
+		 *   layer.drawStyledLayout(sl, x, y, count);
+		 */
+		function calcShowCount(time);
+
+		/**
+		 * キー入力待ち情報を取得
+		 * @return キー待ち情報の配列
+		 * @description
+		 * 各要素は辞書 %[pos, time] です。
+		 *   - pos: 文字位置（charIndex）
+		 *   - time: その時点での経過時間（ms）
+		 *
+		 * <keywait/> タグの位置と、そこまでの累積表示時間を返します。
+		 */
+		function getKeyWaits();
+
+		/**
+		 * 解決済みタイミング情報を取得
+		 * @return タイミング情報の配列
+		 * @description
+		 * 各要素は辞書 %[charIndex, delay] です。
+		 *   - charIndex: 文字位置
+		 *   - delay: 表示開始時間（ms）
+		 *
+		 * 各文字がいつ表示されるかの詳細情報です。
+		 */
+		function getResolvedTimings();
 	}
 }
 
@@ -1341,6 +1410,33 @@ class TextRenderBase {
 	 * @return リンク番号（-1:なし）
 	 */
 	function getLinkOfPosition(x, y);
+
+	// ------------------------------------------------------------------
+	// 新規拡張レンダリング処理群
+	// ------------------------------------------------------------------
+
+	/**
+	 * レンダリング結果をレイヤーに描画
+	 * @param layer 描画先レイヤーオブジェクト
+	 * @param x 描画開始X座標
+	 * @param y 描画開始Y座標
+	 * @param maxChars 描画する文字数の上限（-1で全て、省略時: -1）
+	 * @return 描画領域の配列 [x, y, width, height]
+	 * @description
+	 * done() で確定したレンダリング結果を指定レイヤーに描画します。
+	 * maxChars を指定することで文字送りアニメーションが実現できます。
+	 *
+	 * 使用例:
+	 *   tr.render("テキスト", 0, 50, 0);
+	 *   tr.done();
+	 *   tr.drawToLayer(layer, 10, 10);
+	 *
+	 *   // 文字送り
+	 *   var count = tr.calcShowCount(elapsed);
+	 *   tr.drawToLayer(layer, 10, 10, count);
+	 */
+	function drawToLayer(layer, x, y, maxChars=-1);
+
 }
 
 // =============================================================================

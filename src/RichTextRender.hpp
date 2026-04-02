@@ -192,12 +192,10 @@ public:
 
     void clear() {
         renderEntries_.clear();
-        resolvedTimings_.clear();
         characters_.clear();
         lineOffsets_.clear();
         renderOver_ = false;
         renderText_.clear();
-        totalRenderDelay_ = 0;
         renderLeft_ = renderTop_ = renderRight_ = renderBottom_ = 0;
         resetFont();
         resetStyle();
@@ -263,10 +261,11 @@ public:
         // 2. StyledLayout でレイアウト（TagParser が全メタデータを生成）
         styledLayout_.setParserOptions(parserOptions_);
         if (evalCallback_) styledLayout_.setEvalCallback(evalCallback_);
+        if (labelResolver_) styledLayout_.setLabelResolver(labelResolver_);
         buildStylesAndLayout(combinedTaggedText);
 
         // 3. タイミング解決
-        resolveAllTimings();
+        styledLayout_.resolveAllTimings(timeScale_, widthTimeScale_);
 
         // 4. 文字情報を構築
         buildCharacterInfo();
@@ -282,7 +281,7 @@ public:
     bool getRenderOver() const { return renderOver_; }
     int getRenderLines() const { return static_cast<int>(lineOffsets_.size()); }
     int getRenderCount() const { return static_cast<int>(characters_.size()); }
-    float getRenderDelay() const { return totalRenderDelay_; }
+    float getRenderDelay() const { return styledLayout_.getTotalRenderDelay(); }
 
     float getRenderLeft() const { return renderLeft_; }
     float getRenderTop() const { return renderTop_; }
@@ -298,11 +297,7 @@ public:
     void setFontScale(float v) { fontScale_ = v; }
 
     int calcShowCount(float time) const {
-        int count = 0;
-        for (const auto& rt : resolvedTimings_) {
-            if (rt.delay <= time) count++;
-        }
-        return count;
+        return styledLayout_.calcShowCount(time);
     }
 
     float calcLineOffset(int lineno) const {
@@ -311,7 +306,7 @@ public:
     }
 
     const std::vector<KeyWaitInfo>& getKeyWaits() const {
-        return resolvedKeyWaits_;
+        return styledLayout_.getKeyWaits();
     }
 
     // ================================================================
@@ -609,35 +604,6 @@ private:
         if (height_ > 0 && totalHeight > height_) renderOver_ = true;
     }
 
-    void resolveAllTimings() {
-        // 文字幅の配列を構築（widthTimeScale 用）
-        std::vector<float> charWidths;
-        const auto& lineLayouts = styledLayout_.getLineLayouts();
-        for (const auto& line : lineLayouts) {
-            for (const auto& seg : line.segments) {
-                const auto& glyphs = seg.layout.getGlyphs();
-                for (const auto& g : glyphs) {
-                    charWidths.push_back(g.advance);
-                }
-            }
-        }
-
-        // StyledLayout 経由で TagParser が生成したタイミング情報を取得
-        const auto& timings = styledLayout_.getTimings();
-
-        resolvedTimings_ = resolveTimings(
-            timings, timeScale_,
-            widthTimeScale_, charWidths,
-            labelResolver_, &resolvedKeyWaits_);
-
-        totalRenderDelay_ = 0;
-        for (const auto& rt : resolvedTimings_) {
-            if (rt.delay > totalRenderDelay_) totalRenderDelay_ = rt.delay;
-        }
-        for (const auto& kw : resolvedKeyWaits_) {
-            if (kw.delay > totalRenderDelay_) totalRenderDelay_ = kw.delay;
-        }
-    }
 
     void buildCharacterInfo() {
         characters_.clear();
@@ -690,8 +656,9 @@ private:
                     ci.edgeColor = defaultEdgeColor_;
 
                     // delay
-                    if (globalCharIdx < static_cast<int>(resolvedTimings_.size())) {
-                        ci.delay = resolvedTimings_[globalCharIdx].delay;
+                    const auto& resolvedTimings = styledLayout_.getResolvedTimings();
+                    if (globalCharIdx < static_cast<int>(resolvedTimings.size())) {
+                        ci.delay = resolvedTimings[globalCharIdx].delay;
                     }
 
                     // リンク（StyledLayout 経由の LinkInfo を使用）
@@ -825,14 +792,11 @@ private:
 
     // done() 後の結果
     StyledLayout styledLayout_;
-    std::vector<ResolvedTiming> resolvedTimings_;
-    std::vector<KeyWaitInfo> resolvedKeyWaits_;
     std::vector<CharacterInfo> characters_;
     std::vector<LinkRegion> linkRegions_;
     std::vector<float> lineOffsets_;
 
     bool renderOver_ = false;
-    float totalRenderDelay_ = 0;
     float renderLeft_ = 0, renderTop_ = 0, renderRight_ = 0, renderBottom_ = 0;
     std::u16string renderText_;
 };
