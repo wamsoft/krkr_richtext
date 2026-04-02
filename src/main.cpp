@@ -324,7 +324,7 @@ public:
     float getHeight() const { return layout_.getHeight(); }
     float getAscent() const { return layout_.getAscent(); }
     float getDescent() const { return layout_.getDescent(); }
-    int getGlyphCount() const { return static_cast<int>(layout_.getGlyphCount()); }
+    int getCharCount() const { return static_cast<int>(layout_.getCharCount()); }
 
     RichTextLayout* clone() const {
         RichTextLayout* c = new RichTextLayout();
@@ -354,7 +354,7 @@ public:
     int getLineCount() const { return static_cast<int>(layout_.getLineCount()); }
     float getTotalHeight() const { return layout_.getTotalHeight(); }
     float getMaxWidth() const { return layout_.getMaxWidth(); }
-    int getTotalGlyphCount() const { return static_cast<int>(layout_.getTotalGlyphCount()); }
+    int getTotalCharCount() const { return static_cast<int>(layout_.getTotalCharCount()); }
 
     void setLineSpacing(float v) { layout_.setLineSpacing(v); }
     float getLineSpacing() const { return layout_.getLineSpacing(); }
@@ -554,6 +554,9 @@ public:
             v = r.dstX;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("dstX"), nullptr, &v, dict);
             v = r.dstY;  dict->PropSet(TJS_MEMBERENSURE, TJS_W("dstY"), nullptr, &v, dict);
             v = r.displayIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("displayIndex"), nullptr, &v, dict);
+            v = r.charIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("charIndex"), nullptr, &v, dict);
+            if (r.delay >= 0) { v = r.delay; dict->PropSet(TJS_MEMBERENSURE, TJS_W("delay"), nullptr, &v, dict); }
+            if (r.linkIndex >= 0) { v = r.linkIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("linkIndex"), nullptr, &v, dict); }
             tTJSVariant dictVar(dict, dict);
             dict->Release();
             tTJSVariant* p = &dictVar;
@@ -586,9 +589,6 @@ public:
 
     // lineCount
     int getLineCount() const { return static_cast<int>(layout_.getLineCount()); }
-
-    // totalGlyphCount
-    int getTotalGlyphCount() const { return static_cast<int>(layout_.getTotalGlyphCount()); }
 
     // totalCharCount
     int getTotalCharCount() const { return static_cast<int>(layout_.getTotalCharCount()); }
@@ -717,34 +717,34 @@ public:
     }
     
     // TextLayout描画
-    tTJSVariant drawTextLayout(RichTextLayout* textLayout, float x, float y, RichTextAppearance* appearance, int maxGlyphs = -1) {
+    tTJSVariant drawTextLayout(RichTextLayout* textLayout, float x, float y, RichTextAppearance* appearance, int maxChars = -1) {
         if (!textLayout || !appearance) {
             TVPThrowExceptionMessage(TJS_W("textLayout and appearance are required"));
         }
-        richtext::RectF result = renderer_.drawLayout(textLayout->layout_, x, y, appearance->appearance, maxGlyphs);
+        richtext::RectF result = renderer_.drawLayout(textLayout->layout_, x, y, appearance->appearance, maxChars);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
 
     // ParagraphLayout描画
-    tTJSVariant drawParagraphLayout(RichTextParagraphLayout* paraLayout, float x, float y, float width, float height, int hAlign, int vAlign, RichTextStyle* style, RichTextAppearance* appearance, int maxGlyphs = -1) {
+    tTJSVariant drawParagraphLayout(RichTextParagraphLayout* paraLayout, float x, float y, float width, float height, int hAlign, int vAlign, RichTextStyle* style, RichTextAppearance* appearance, int maxChars = -1) {
         if (!paraLayout || !style || !appearance) {
             TVPThrowExceptionMessage(TJS_W("paraLayout, style and appearance are required"));
         }
         richtext::RectF r(x, y, width, height);
-        richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout_, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxGlyphs);
+        richtext::RectF result = renderer_.drawParagraphLayout(paraLayout->layout_, r, static_cast<ParagraphLayout::HAlign>(hAlign), static_cast<ParagraphLayout::VAlign>(vAlign), style->style, appearance->appearance, maxChars);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
     }
 
     // StyledLayout描画
-    tTJSVariant drawStyledLayout(RichTextStyledLayout* styledLayout, float x, float y, int maxGlyphs = -1) {
+    tTJSVariant drawStyledLayout(RichTextStyledLayout* styledLayout, float x, float y, int maxChars = -1) {
         if (!styledLayout) {
             TVPThrowExceptionMessage(TJS_W("styledLayout is required"));
         }
-        richtext::RectF result = renderer_.drawStyledLayout(styledLayout->layout_, x, y, maxGlyphs);
+        richtext::RectF result = renderer_.drawStyledLayout(styledLayout->layout_, x, y, maxChars);
         renderer_.sync();
         redraw(static_cast<int>(result.x), static_cast<int>(result.y), static_cast<int>(result.width) + 1, static_cast<int>(result.height) + 1);
         return toVariant(result);
@@ -1024,7 +1024,7 @@ static std::map<std::string, Appearance> parseAppearances(tTJSVariant* param) {
     return appearances;
 }
 
-// drawTextLayout RawCallback（省略可能maxGlyphs対応）
+// drawTextLayout RawCallback（省略可能maxChars対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
                                            tTJSVariant** param, LayerExRichText* objthis)
@@ -1034,12 +1034,12 @@ LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparam
     float x = static_cast<float>(param[1]->AsReal());
     float y = static_cast<float>(param[2]->AsReal());
     RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[3]->AsObjectNoAddRef());
-    int maxGlyphs = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
+    int maxChars = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
 
     if (result) {
-        *result = objthis->drawTextLayout(textLayout, x, y, appearance, maxGlyphs);
+        *result = objthis->drawTextLayout(textLayout, x, y, appearance, maxChars);
     } else {
-        objthis->drawTextLayout(textLayout, x, y, appearance, maxGlyphs);
+        objthis->drawTextLayout(textLayout, x, y, appearance, maxChars);
     }
     return TJS_S_OK;
 }
@@ -1084,14 +1084,14 @@ LayerExRichText_drawParagraphLayout_RawCallback(tTJSVariant* result, tjs_int num
     int vAlign = static_cast<int>(param[6]->AsInteger());
     RichTextStyle* style = ncbInstanceAdaptor<RichTextStyle>::GetNativeInstance(param[7]->AsObjectNoAddRef());
     RichTextAppearance* appearance = ncbInstanceAdaptor<RichTextAppearance>::GetNativeInstance(param[8]->AsObjectNoAddRef());
-    int maxGlyphs = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
+    int maxChars = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
 
     if (result) {
         *result = objthis->drawParagraphLayout(
-            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
+            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxChars);
     } else {
         objthis->drawParagraphLayout(
-            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs);
+            paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxChars);
     }
     return TJS_S_OK;
 }
@@ -1122,27 +1122,27 @@ RichTextStyledLayout_layout_RawCallback(tTJSVariant* result, tjs_int numparams,
 
 // TextureAtlas::getCopyRects RawCallback
 // 引数パターンで 3 つのオーバーロードを区別:
-//   (Layout, x, y, Appearance [, maxGlyphs])          → TextLayout 版
-//   (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxGlyphs]) → Paragraph 版
-//   (StyledLayout, x, y [, maxGlyphs])                → StyledLayout 版
+//   (Layout, x, y, Appearance [, maxChars])          → TextLayout 版
+//   (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxChars]) → Paragraph 版
+//   (StyledLayout, x, y [, maxChars])                → StyledLayout 版
 static tjs_error TJS_INTF_METHOD
 RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numparams,
                                               tTJSVariant** param, RichTextTextureAtlas* objthis)
 {
     if (numparams < 3) return TJS_E_BADPARAMCOUNT;
 
-    // StyledLayout 版: (StyledLayout, x, y [, maxGlyphs])
+    // StyledLayout 版: (StyledLayout, x, y [, maxChars])
     RichTextStyledLayout* styledLayout = ncbInstanceAdaptor<RichTextStyledLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     if (styledLayout) {
         float x = static_cast<float>(param[1]->AsReal());
         float y = static_cast<float>(param[2]->AsReal());
-        int maxGlyphs = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
-        auto rects = objthis->getAtlas().getCopyRects(styledLayout->layout_, x, y, maxGlyphs);
+        int maxChars = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
+        auto rects = objthis->getAtlas().getCopyRects(styledLayout->layout_, x, y, maxChars);
         if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
         return TJS_S_OK;
     }
 
-    // TextLayout 版: (Layout, x, y, Appearance [, maxGlyphs])
+    // TextLayout 版: (Layout, x, y, Appearance [, maxChars])
     RichTextLayout* textLayout = ncbInstanceAdaptor<RichTextLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     if (textLayout) {
         if (numparams < 4) return TJS_E_BADPARAMCOUNT;
@@ -1152,13 +1152,13 @@ RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numpa
         if (!appearance) {
             TVPThrowExceptionMessage(TJS_W("appearance is required"));
         }
-        int maxGlyphs = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
-        auto rects = objthis->getAtlas().getCopyRects(textLayout->layout_, x, y, appearance->appearance, maxGlyphs);
+        int maxChars = (numparams >= 5) ? static_cast<int>(param[4]->AsInteger()) : -1;
+        auto rects = objthis->getAtlas().getCopyRects(textLayout->layout_, x, y, appearance->appearance, maxChars);
         if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
         return TJS_S_OK;
     }
 
-    // ParagraphLayout 版: (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxGlyphs])
+    // ParagraphLayout 版: (ParagraphLayout, x, y, w, h, hAlign, vAlign, Style, Appearance [, maxChars])
     RichTextParagraphLayout* paraLayout = ncbInstanceAdaptor<RichTextParagraphLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     if (paraLayout) {
         if (numparams < 9) return TJS_E_BADPARAMCOUNT;
@@ -1173,13 +1173,13 @@ RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numpa
         if (!style || !appearance) {
             TVPThrowExceptionMessage(TJS_W("style and appearance are required"));
         }
-        int maxGlyphs = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
+        int maxChars = (numparams >= 10) ? static_cast<int>(param[9]->AsInteger()) : -1;
         richtext::RectF rect(x, y, w, h);
         auto rects = objthis->getAtlas().getCopyRects(
             paraLayout->layout_, rect,
             static_cast<ParagraphLayout::HAlign>(hAlign),
             static_cast<ParagraphLayout::VAlign>(vAlign),
-            style->style, appearance->appearance, maxGlyphs);
+            style->style, appearance->appearance, maxChars);
         if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
         return TJS_S_OK;
     }
@@ -1188,7 +1188,7 @@ RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numpa
     return TJS_E_INVALIDPARAM;
 }
 
-// drawStyledLayout RawCallback（省略可能maxGlyphs対応）
+// drawStyledLayout RawCallback（省略可能maxChars対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawStyledLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
                                              tTJSVariant** param, LayerExRichText* objthis)
@@ -1197,12 +1197,12 @@ LayerExRichText_drawStyledLayout_RawCallback(tTJSVariant* result, tjs_int numpar
     RichTextStyledLayout* styledLayout = ncbInstanceAdaptor<RichTextStyledLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     float x = static_cast<float>(param[1]->AsReal());
     float y = static_cast<float>(param[2]->AsReal());
-    int maxGlyphs = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
+    int maxChars = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
 
     if (result) {
-        *result = objthis->drawStyledLayout(styledLayout, x, y, maxGlyphs);
+        *result = objthis->drawStyledLayout(styledLayout, x, y, maxChars);
     } else {
-        objthis->drawStyledLayout(styledLayout, x, y, maxGlyphs);
+        objthis->drawStyledLayout(styledLayout, x, y, maxChars);
     }
     return TJS_S_OK;
 }
@@ -1353,7 +1353,7 @@ NCB_REGISTER_SUBCLASS(RichTextLayout) {
     NCB_PROPERTY_RO(height, getHeight);
     NCB_PROPERTY_RO(ascent, getAscent);
     NCB_PROPERTY_RO(descent, getDescent);
-    NCB_PROPERTY_RO(glyphCount, getGlyphCount);
+    NCB_PROPERTY_RO(charCount, getCharCount);
     NCB_METHOD(clone);
 };
 
@@ -1364,7 +1364,7 @@ NCB_REGISTER_SUBCLASS(RichTextParagraphLayout) {
     NCB_PROPERTY_RO(lineCount, getLineCount);
     NCB_PROPERTY_RO(totalHeight, getTotalHeight);
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
-    NCB_PROPERTY_RO(totalGlyphCount, getTotalGlyphCount);
+    NCB_PROPERTY_RO(totalCharCount, getTotalCharCount);
     NCB_PROPERTY(lineSpacing, getLineSpacing, setLineSpacing);
     NCB_PROPERTY(breakStrategy, getBreakStrategy, setBreakStrategy);
     NCB_METHOD(getLineInfo);
@@ -1376,7 +1376,6 @@ NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
     NCB_CONSTRUCTOR(());
     NCB_METHOD_RAW_CALLBACK(layout, RichTextStyledLayout_layout_RawCallback, 0);
     NCB_PROPERTY_RO(lineCount, getLineCount);
-    NCB_PROPERTY_RO(totalGlyphCount, getTotalGlyphCount);
     NCB_PROPERTY_RO(totalCharCount, getTotalCharCount);
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
     NCB_PROPERTY_RO(maxHeight, getMaxHeight);

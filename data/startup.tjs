@@ -731,8 +731,8 @@ class MainWindow extends Window {
 
         y += 90;
 
-        // --- 逐次表示デモ（maxGlyphs 指定） ---
-        drawLabel("逐次表示デモ（maxGlyphs=15）", LEFT, y);
+        // --- 逐次表示デモ（maxChars 指定） ---
+        drawLabel("逐次表示デモ（maxChars=20）", LEFT, y);
         y += 18;
 
         var partialRects = atlas.getCopyRects(sl, LEFT, y, 20);

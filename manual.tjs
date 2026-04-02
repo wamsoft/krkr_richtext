@@ -428,9 +428,9 @@ class RichText {
 		property descent;
 
 		/**
-		 * グリフ数（読み取り専用）
+		 * 文字数（読み取り専用）
 		 */
-		property glyphCount;
+		property charCount;
 	}
 
 	// =========================================================================
@@ -442,7 +442,7 @@ class RichText {
 	 * @description
 	 * 複数行テキストのレイアウト計算結果を保持します。
 	 * レイアウトと描画を分離することで、計測結果の再利用や
-	 * 逐次表示（maxGlyphs 指定）に利用できます。
+	 * 逐次表示（maxChars 指定）に利用できます。
 	 *
 	 * 使用例:
 	 *   var pl = new RichText.ParagraphLayout();
@@ -496,9 +496,9 @@ class RichText {
 		property maxWidth;
 
 		/**
-		 * 全行のグリフ数合計（読み取り専用）
+		 * 全行の文字数合計（読み取り専用）
 		 */
-		property totalGlyphCount;
+		property totalCharCount;
 
 		/**
 		 * 行間
@@ -605,29 +605,30 @@ class RichText {
 		 * @description
 		 * 3つのオーバーロードがあります:
 		 *
-		 * 1) getCopyRects(layout, x, y, appearance, maxGlyphs=-1)
+		 * 1) getCopyRects(layout, x, y, appearance, maxChars=-1)
 		 *    - layout: RichText.Layout
 		 *    - x, y: 描画位置
 		 *    - appearance: RichText.Appearance
-		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *    - maxChars: 最大文字数（-1で全て）
 		 *
-		 * 2) getCopyRects(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs=-1)
+		 * 2) getCopyRects(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxChars=-1)
 		 *    - paraLayout: RichText.ParagraphLayout
 		 *    - x, y, width, height: 描画領域
 		 *    - hAlign, vAlign: アライン
 		 *    - style: RichText.Style
 		 *    - appearance: RichText.Appearance
-		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *    - maxChars: 最大文字数（-1で全て）
 		 *
-		 * 3) getCopyRects(styledLayout, x, y, maxGlyphs=-1)
+		 * 3) getCopyRects(styledLayout, x, y, maxChars=-1)
 		 *    - styledLayout: RichText.StyledLayout
 		 *    - x, y: 描画位置
-		 *    - maxGlyphs: 最大グリフ数（-1で全て）
+		 *    - maxChars: 最大文字数（-1で全て）
 		 *
 		 * @return コピー矩形の配列。各要素は辞書:
-		 *   %[srcX, srcY, srcWidth, srcHeight, dstX, dstY, displayIndex, delay, linkIndex]
-		 *   delay: 表示タイミング（ms、-1 = 未設定）
-		 *   linkIndex: リンク番号（-1 = なし）
+		 *   %[srcX, srcY, srcWidth, srcHeight, dstX, dstY, displayIndex, charIndex, delay, linkIndex]
+		 *   charIndex: 元テキストでの文字位置
+		 *   delay: 表示タイミング（ms、未設定時は含まれない）
+		 *   linkIndex: リンク番号（未設定時は含まれない）
 		 */
 		function getCopyRects(/* overloaded */);
 	}
@@ -694,13 +695,8 @@ class RichText {
 		property lineCount;
 
 		/**
-		 * 総グリフ数（読み取り専用）
-		 * @description 文字送りアニメーションの上限値に使用
-		 */
-		property totalGlyphCount;
-
-		/**
 		 * 総文字数（読み取り専用）
+		 * @description 文字送りアニメーションの上限値に使用
 		 */
 		property totalCharCount;
 
@@ -827,7 +823,7 @@ class Layer {
 	 * @param x 描画開始X座標
 	 * @param y 描画開始Y座標（ベースライン位置）
 	 * @param appearance RichText.Appearance オブジェクト
-	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @param maxChars 描画する文字数の上限（-1で全て、省略時: -1）
 	 * @return 描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 事前にレイアウト計算済みの Layout を描画します。
@@ -838,7 +834,7 @@ class Layer {
 	 *   tl.layout("Hello World", style);
 	 *   layer.drawTextLayout(tl, 10, 50, appearance);
 	 */
-	function drawTextLayout(textLayout, x, y, appearance, maxGlyphs=-1);
+	function drawTextLayout(textLayout, x, y, appearance, maxChars=-1);
 
 	/**
 	 * レイアウト済み ParagraphLayout を描画
@@ -851,11 +847,11 @@ class Layer {
 	 * @param vAlign 垂直アライン (RichText.VALIGN_TOP/MIDDLE/BOTTOM)
 	 * @param style RichText.Style オブジェクト
 	 * @param appearance RichText.Appearance オブジェクト
-	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @param maxChars 描画する文字数の上限（-1で全て、省略時: -1）
 	 * @return 実際の描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 事前にレイアウト計算済みの ParagraphLayout を描画します。
-	 * maxGlyphs を指定することで逐次表示（文字送り）が実現できます。
+	 * maxChars を指定することで逐次表示（文字送り）が実現できます。
 	 *
 	 * 使用例:
 	 *   var pl = new RichText.ParagraphLayout();
@@ -865,23 +861,23 @@ class Layer {
 	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
 	 *       style, app);
 	 *
-	 *   // 文字送り（最初の5グリフだけ描画）
+	 *   // 文字送り（最初の5文字だけ描画）
 	 *   layer.drawParagraphLayout(pl, 10, 10, 300, 200,
 	 *       RichText.HALIGN_LEFT, RichText.VALIGN_TOP,
 	 *       style, app, 5);
 	 */
-	function drawParagraphLayout(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxGlyphs=-1);
+	function drawParagraphLayout(paraLayout, x, y, width, height, hAlign, vAlign, style, appearance, maxChars=-1);
 
 	/**
 	 * レイアウト済み StyledLayout を描画
 	 * @param styledLayout RichText.StyledLayout オブジェクト
 	 * @param x 描画X座標
 	 * @param y 描画Y座標
-	 * @param maxGlyphs 描画するグリフ数の上限（-1で全て、省略時: -1）
+	 * @param maxChars 描画する文字数の上限（-1で全て、省略時: -1）
 	 * @return 実際の描画領域の配列 [x, y, width, height]
 	 * @description
 	 * 事前にレイアウト計算済みの StyledLayout を描画します。
-	 * maxGlyphs を指定することで文字送りアニメーションが実現できます。
+	 * maxChars を指定することで文字送りアニメーションが実現できます。
 	 *
 	 * 使用例:
 	 *   var sl = new RichText.StyledLayout();
@@ -892,10 +888,10 @@ class Layer {
 	 *   // 全描画
 	 *   layer.drawStyledLayout(sl, 10, 10);
 	 *
-	 *   // 文字送り（最初の5グリフだけ描画）
+	 *   // 文字送り（最初の5文字だけ描画）
 	 *   layer.drawStyledLayout(sl, 10, 10, 5);
 	 */
-	function drawStyledLayout(styledLayout, x, y, maxGlyphs=-1);
+	function drawStyledLayout(styledLayout, x, y, maxChars=-1);
 
 	/**
 	 * 矩形を描画
@@ -1407,7 +1403,7 @@ sl.layout(
     %[ "default": app, "bold": boldApp ]
 );
 
-for (var i = 1; i <= sl.totalGlyphCount; i++) {
+for (var i = 1; i <= sl.totalCharCount; i++) {
     layer.fillRect(0, 0, 800, 600, 0xFF808080);
     layer.drawStyledLayout(sl, 10, 10, i);
     // ... フレーム待ち ...
