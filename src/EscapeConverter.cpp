@@ -5,13 +5,6 @@
 #include <sstream>
 #include <algorithm>
 
-// UTF-16 文字列リテラルヘルパー
-static const char16_t* u16(const char* s, std::u16string& buf) {
-    buf.clear();
-    while (*s) buf += static_cast<char16_t>(*s++);
-    return buf.c_str();
-}
-
 // char16_t 配列から std::string (ASCII) に変換
 static std::string u16ToAscii(const std::u16string& s) {
     std::string r;
@@ -25,7 +18,6 @@ static std::string u16ToAscii(const std::u16string& s) {
 // 数値を u16string に変換
 static std::u16string toU16String(float v) {
     std::ostringstream oss;
-    // 整数の場合は小数点なし
     if (v == static_cast<int>(v)) {
         oss << static_cast<int>(v);
     } else {
@@ -54,7 +46,7 @@ std::u16string EscapeConverter::readUntilSemicolon(ParseState& s) {
     while (s.pos < s.len) {
         char16_t ch = s.text[s.pos];
         if (ch == u';') {
-            s.pos++; // セミコロンを消費
+            s.pos++;
             break;
         }
         result += ch;
@@ -71,11 +63,10 @@ float EscapeConverter::readNumberUntilSemicolon(ParseState& s) {
 }
 
 // ============================================================================
-// 文字追加（タイミングエントリ付き）
+// 文字追加（タグ安全エスケープのみ）
 // ============================================================================
 
 void EscapeConverter::addChar(ParseState& s, char16_t ch) {
-    // タグのエスケープ（richtext タグパーサーが誤解しないよう）
     if (ch == u'<') {
         s.taggedText += u"&lt;";
     } else if (ch == u'>') {
@@ -85,21 +76,6 @@ void EscapeConverter::addChar(ParseState& s, char16_t ch) {
     } else {
         s.taggedText += ch;
     }
-
-    // タイミングエントリを記録
-    richtext::TimingEntry entry;
-    entry.type = richtext::TimingEntry::Type::Char;
-    entry.charIndex = static_cast<int>(s.plainCharCount);
-    entry.delayPercent = s.currentDelayPercent;
-    entry.delayMs = s.currentDelayMs;
-    s.timings.push_back(entry);
-
-    // リンク中なら文字インデックスを記録
-    if (s.currentLinkIndex >= 0 && s.currentLinkIndex < static_cast<int>(s.links.size())) {
-        s.links[s.currentLinkIndex].endIndex = s.plainCharCount + 1;
-    }
-
-    s.plainCharCount++;
 }
 
 void EscapeConverter::addChars(ParseState& s, const std::u16string& str) {
@@ -117,7 +93,6 @@ void EscapeConverter::emitTag(ParseState& s, const std::u16string& tag) {
 // ============================================================================
 
 void EscapeConverter::closeAllStyleTags(ParseState& s) {
-    // 開いているタグを逆順に閉じる
     for (int i = 0; i < s.openItalicTags; i++)
         emitTag(s, u"</i>");
     s.openItalicTags = 0;
@@ -148,7 +123,7 @@ void EscapeConverter::closeAllStyleTags(ParseState& s) {
 }
 
 // ============================================================================
-// バックスラッシュエスケープ (\n, \t, \i, \r, \w, \k, \x, \文字)
+// バックスラッシュエスケープ
 // ============================================================================
 
 void EscapeConverter::parseBackslash(ParseState& s) {
@@ -157,44 +132,33 @@ void EscapeConverter::parseBackslash(ParseState& s) {
 
     switch (ch) {
     case u'n':
-        // 改行
         emitTag(s, u"<br/>");
         break;
     case u't':
-        // タブ → スペースとして処理
         addChar(s, u'\t');
         break;
     case u'i':
-        // インデント開始（richtext では直接対応なし、無視）
-        break;
     case u'r':
-        // インデント解除（richtext では直接対応なし、無視）
+        // インデント（richtext では非対応、無視）
         break;
-    case u'w': {
-        // 空白文字分進める
+    case u'w':
         addChar(s, u' ');
         break;
-    }
-    case u'k': {
-        // キー入力待ち
-        richtext::TimingEntry entry;
-        entry.type = richtext::TimingEntry::Type::KeyWait;
-        entry.charIndex = static_cast<int>(s.plainCharCount);
-        s.timings.push_back(entry);
+    case u'k':
+        // キー入力待ち → タグ出力
+        emitTag(s, u"<keywait/>");
         break;
-    }
     case u'x':
-        // nul文字相当（表示なし、位置のみ進める）
+        // 不可視文字（無視）
         break;
     default:
-        // エスケープ指定: 特殊機能を無効化してそのまま出力
         addChar(s, ch);
         break;
     }
 }
 
 // ============================================================================
-// パーセント記法 (%codes)
+// パーセント記法
 // ============================================================================
 
 void EscapeConverter::parsePercent(ParseState& s,
@@ -220,7 +184,6 @@ void EscapeConverter::parsePercent(ParseState& s,
 
     // %bX — ボールド
     if (ch == u'b' && s.pos + 1 < s.len && s.text[s.pos + 1] != u'#') {
-        // ただし %b で次が数字 or デフォルトなら種別指定
         s.pos++;
         char16_t val = (s.pos < s.len) ? advance(s) : u'd';
         if (!options_.ignoreType) {
@@ -233,7 +196,6 @@ void EscapeConverter::parsePercent(ParseState& s,
                 if (s.openBoldTags > 0) s.openBoldTags--;
                 s.inBold = false;
             } else if (val != u'0' && val != u'1') {
-                // デフォルトに戻す
                 if (s.inBold) {
                     emitTag(s, u"</b>");
                     if (s.openBoldTags > 0) s.openBoldTags--;
@@ -268,18 +230,16 @@ void EscapeConverter::parsePercent(ParseState& s,
         return;
     }
 
-    // %sX — 影指定 (ただし %s# は影色指定)
+    // %sX — 影指定
     if (ch == u's') {
         s.pos++;
         if (s.pos < s.len && s.text[s.pos] == u'#') {
-            // %s#xxxxxx; — 影色指定
-            s.pos++; // '#' を消費
+            s.pos++;
             std::u16string colorStr = readUntilSemicolon(s);
             if (!options_.ignoreType) {
                 std::u16string tag = u"<shadow color='#";
                 tag += colorStr;
                 tag += u"'>";
-                // 既存の shadow を閉じてから新しいものを開く
                 if (s.inShadow) {
                     emitTag(s, u"</shadow>");
                     if (s.openShadowTags > 0) s.openShadowTags--;
@@ -289,7 +249,6 @@ void EscapeConverter::parsePercent(ParseState& s,
                 s.inShadow = true;
             }
         } else {
-            // %sX — 影の on/off
             char16_t val = (s.pos < s.len) ? advance(s) : u'd';
             if (!options_.ignoreType) {
                 if (val == u'1' && !s.inShadow) {
@@ -312,12 +271,11 @@ void EscapeConverter::parsePercent(ParseState& s,
         return;
     }
 
-    // %eX — エッジ指定 (ただし %e# はエッジ色指定)
+    // %eX — エッジ指定
     if (ch == u'e') {
         s.pos++;
         if (s.pos < s.len && s.text[s.pos] == u'#') {
-            // %e#xxxxxx; — エッジ色指定
-            s.pos++; // '#' を消費
+            s.pos++;
             std::u16string colorStr = readUntilSemicolon(s);
             if (!options_.ignoreType) {
                 std::u16string tag = u"<outline color='#";
@@ -332,7 +290,6 @@ void EscapeConverter::parsePercent(ParseState& s,
                 s.inEdge = true;
             }
         } else {
-            // %eX — エッジの on/off
             char16_t val = (s.pos < s.len) ? advance(s) : u'd';
             if (!options_.ignoreType) {
                 if (val == u'1' && !s.inEdge) {
@@ -402,147 +359,122 @@ void EscapeConverter::parsePercent(ParseState& s,
         return;
     }
 
-    // %C — センタリング
+    // %C — センタリング（記録のみ）
     if (ch == u'C') {
         s.pos++;
-        if (!options_.ignoreStyle) {
-            s.align = 0;
-        }
+        s.align = 0;
         return;
     }
 
-    // %R — 右よせ
+    // %R — 右よせ（記録のみ）
     if (ch == u'R') {
         s.pos++;
-        if (!options_.ignoreStyle) {
-            s.align = 1;
-        }
+        s.align = 1;
         return;
     }
 
-    // %L — 左寄せ
+    // %L — 左寄せ（記録のみ）
     if (ch == u'L') {
         s.pos++;
-        if (!options_.ignoreStyle) {
-            s.align = -1;
-        }
+        s.align = -1;
         return;
     }
 
-    // %p数値; — ピッチ
+    // %p数値; — ピッチ → <font spacing> タグ
     if (ch == u'p') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
-        if (!options_.ignoreStyle) {
-            s.pitch = val;
-        }
+        std::u16string tag = u"<font spacing='";
+        tag += toU16String(val);
+        tag += u"'>";
+        emitTag(s, tag);
+        s.openFontTags++;
         return;
     }
 
-    // %d数値; — 文字あたり表示時間（パーセント）
+    // %d数値; — 文字あたり表示時間（パーセント）→ <delay value='xxx%'> タグ
     if (ch == u'd') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
-        if (!options_.ignoreDelay) {
-            s.currentDelayPercent = val;
-            s.currentDelayMs = -1.0f;
-        }
+        std::u16string tag = u"<delay value='";
+        tag += toU16String(val);
+        tag += u"%'/>";
+        emitTag(s, tag);
         return;
     }
 
-    // %a数値; — 文字あたり表示時間（ms）
+    // %a数値; — 文字あたり表示時間（ms）→ <delay value='xxx'> タグ
     if (ch == u'a') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
-        if (!options_.ignoreDelay) {
-            s.currentDelayMs = val;
-        }
+        std::u16string tag = u"<delay value='";
+        tag += toU16String(val);
+        tag += u"'/>";
+        emitTag(s, tag);
         return;
     }
 
-    // %w数値; — 時間待ち（パーセント）
+    // %w数値; — 時間待ち（パーセント）→ <wait value='xxx%'> タグ
     if (ch == u'w') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
-        if (!options_.ignoreDelay) {
-            richtext::TimingEntry entry;
-            entry.type = richtext::TimingEntry::Type::Wait;
-            entry.charIndex = static_cast<int>(s.plainCharCount);
-            entry.waitPercent = val;
-            s.timings.push_back(entry);
-        }
+        std::u16string tag = u"<wait value='";
+        tag += toU16String(val);
+        tag += u"%'/>";
+        emitTag(s, tag);
         return;
     }
 
-    // %t数値; — 時間待ち（ms）
+    // %t数値; — 時間待ち（ms）→ <wait value='xxx'> タグ
     if (ch == u't') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
-        if (!options_.ignoreDelay) {
-            richtext::TimingEntry entry;
-            entry.type = richtext::TimingEntry::Type::Wait;
-            entry.charIndex = static_cast<int>(s.plainCharCount);
-            entry.waitMs = val;
-            s.timings.push_back(entry);
-        }
+        std::u16string tag = u"<wait value='";
+        tag += toU16String(val);
+        tag += u"'/>";
+        emitTag(s, tag);
         return;
     }
 
-    // %D数値; or %D$xxx; — 時間同期
+    // %D数値; or %D$xxx; — 時間同期 → <sync value='xxx'> タグ
     if (ch == u'D') {
         s.pos++;
-        if (!options_.ignoreDelay) {
-            if (s.pos < s.len && s.text[s.pos] == u'$') {
-                // %D$label;
-                s.pos++; // '$' を消費
-                std::u16string label = readUntilSemicolon(s);
-                richtext::TimingEntry entry;
-                entry.type = richtext::TimingEntry::Type::Sync;
-                entry.charIndex = static_cast<int>(s.plainCharCount);
-                entry.syncLabel = u16ToAscii(label);
-                s.timings.push_back(entry);
-            } else {
-                // %D数値;
-                float val = readNumberUntilSemicolon(s);
-                richtext::TimingEntry entry;
-                entry.type = richtext::TimingEntry::Type::Sync;
-                entry.charIndex = static_cast<int>(s.plainCharCount);
-                entry.syncMs = val;
-                s.timings.push_back(entry);
-            }
+        if (s.pos < s.len && s.text[s.pos] == u'$') {
+            // %D$label; — ラベル指定
+            s.pos++;
+            std::u16string label = readUntilSemicolon(s);
+            std::u16string tag = u"<sync value='";
+            tag += label;
+            tag += u"'/>";
+            emitTag(s, tag);
         } else {
-            // ignoreDelay でも構文は消費する
-            if (s.pos < s.len && s.text[s.pos] == u'$') {
-                s.pos++;
-                readUntilSemicolon(s);
-            } else {
-                readNumberUntilSemicolon(s);
-            }
+            // %D数値; — ms 指定
+            float val = readNumberUntilSemicolon(s);
+            std::u16string tag = u"<sync value='";
+            tag += toU16String(val);
+            tag += u"'/>";
+            emitTag(s, tag);
         }
         return;
     }
 
-    // %lリンク; — リンク開始 / %l; — リンク終了
+    // %lリンク; — リンク開始 / %l; — リンク終了 → <link> タグ
     if (ch == u'l') {
         s.pos++;
         if (s.pos < s.len && s.text[s.pos] == u';') {
-            // %l; — リンク終了
-            s.pos++; // ';' を消費
-            s.currentLinkIndex = -1;
+            s.pos++;
+            emitTag(s, u"</link>");
         } else {
-            // %lリンク名;
             std::u16string linkName = readUntilSemicolon(s);
-            LinkInfo link;
-            link.name = u16ToAscii(linkName);
-            link.startIndex = s.plainCharCount;
-            link.endIndex = s.plainCharCount;
-            s.links.push_back(link);
-            s.currentLinkIndex = static_cast<int>(s.links.size()) - 1;
+            std::u16string tag = u"<link name='";
+            tag += linkName;
+            tag += u"'>";
+            emitTag(s, tag);
         }
         return;
     }
 
-    // %n数値; — スタイル改行（指定個数分）
+    // %n数値; — スタイル改行
     if (ch == u'n') {
         s.pos++;
         float val = readNumberUntilSemicolon(s);
@@ -560,7 +492,7 @@ void EscapeConverter::parsePercent(ParseState& s,
         return;
     }
 
-    // 不明な % コード: そのまま '%' と次の文字を出力
+    // 不明な % コード
     addChar(s, u'%');
 }
 
@@ -585,15 +517,16 @@ void EscapeConverter::parseHash(ParseState& s) {
 
 void EscapeConverter::parseDollar(ParseState& s) {
     std::u16string varName = readUntilSemicolon(s);
-    if (evalCallback_ && !varName.empty()) {
-        std::u16string value = evalCallback_(varName);
-        // 変数値をそのまま埋め込む（エスケープ処理なし、値は安全と想定）
-        addChars(s, value);
+    if (!varName.empty()) {
+        std::u16string tag = u"<eval name='";
+        tag += varName;
+        tag += u"'/>";
+        emitTag(s, tag);
     }
 }
 
 // ============================================================================
-// &xxx; — グラフィック文字
+// &xxx; — グラフィック文字 → <graph> タグ
 // ============================================================================
 
 void EscapeConverter::parseAmpersand(ParseState& s) {
@@ -605,15 +538,15 @@ void EscapeConverter::parseAmpersand(ParseState& s) {
         graphSizeCallback_(graphName, w, h);
     }
 
-    // U+FFFC (OBJECT REPLACEMENT CHARACTER) をプレースホルダとして挿入
-    GraphInfo gi;
-    gi.name = graphName;
-    gi.charIndex = static_cast<int>(s.plainCharCount);
-    gi.width = w;
-    gi.height = h;
-    s.graphics.push_back(gi);
-
-    addChar(s, u'\uFFFC');
+    // <graph> タグを出力（TagParser が U+FFFC 挿入と GraphInfo 記録を行う）
+    std::u16string tag = u"<graph name='";
+    tag += graphName;
+    tag += u"' width='";
+    tag += toU16String(w);
+    tag += u"' height='";
+    tag += toU16String(h);
+    tag += u"'/>";
+    emitTag(s, tag);
 }
 
 // ============================================================================
@@ -622,15 +555,13 @@ void EscapeConverter::parseAmpersand(ParseState& s) {
 
 void EscapeConverter::parseRuby(ParseState& s) {
     if (options_.ignoreRuby) {
-        // ルビを無視: ] まで読み飛ばす
         while (s.pos < s.len && s.text[s.pos] != u']') {
             s.pos++;
         }
-        if (s.pos < s.len) s.pos++; // ']' を消費
+        if (s.pos < s.len) s.pos++;
         return;
     }
 
-    // ルビテキストとカウントを読む
     std::u16string rubyText;
     int rubyCount = 1;
 
@@ -642,13 +573,12 @@ void EscapeConverter::parseRuby(ParseState& s) {
         }
         if (ch == u',') {
             s.pos++;
-            // カンマ以降は文字数
             std::u16string countStr;
             while (s.pos < s.len && s.text[s.pos] != u']') {
                 countStr += s.text[s.pos];
                 s.pos++;
             }
-            if (s.pos < s.len) s.pos++; // ']'
+            if (s.pos < s.len) s.pos++;
             std::string narrow = u16ToAscii(countStr);
             rubyCount = std::max(1, std::atoi(narrow.c_str()));
             break;
@@ -659,7 +589,6 @@ void EscapeConverter::parseRuby(ParseState& s) {
 
     if (rubyText.empty()) return;
 
-    // 次の rubyCount 文字を <ruby> タグで囲む
     std::u16string tag = u"<ruby text='";
     tag += rubyText;
     tag += u"'>";
@@ -668,7 +597,6 @@ void EscapeConverter::parseRuby(ParseState& s) {
     int added = 0;
     while (added < rubyCount && s.pos < s.len) {
         char16_t ch = s.text[s.pos];
-        // 次の文字がエスケープシーケンスの場合はそのまま通常文字として扱う
         if (ch == u'\\' && s.pos + 1 < s.len) {
             s.pos++;
             addChar(s, s.text[s.pos]);
@@ -693,14 +621,25 @@ EscapeConverter::ConvertResult EscapeConverter::convert(
     const std::u16string& escapeText,
     float defaultFontSize,
     float bigFontSize,
-    float smallFontSize)
+    float smallFontSize,
+    float diff,
+    float all)
 {
     ParseState s;
     s.text = escapeText.c_str();
     s.len = escapeText.size();
     s.pos = 0;
-    s.plainCharCount = 0;
     s.taggedText.reserve(escapeText.size() * 2);
+
+    // 先頭に <start> タグを出力
+    {
+        std::u16string tag = u"<start diff='";
+        tag += toU16String(diff);
+        tag += u"' all='";
+        tag += toU16String(all);
+        tag += u"'/>";
+        emitTag(s, tag);
+    }
 
     while (s.pos < s.len) {
         char16_t ch = s.text[s.pos];
@@ -743,17 +682,10 @@ EscapeConverter::ConvertResult EscapeConverter::convert(
         }
     }
 
-    // 開いているタグを閉じる
     closeAllStyleTags(s);
 
-    // 結果を組み立て
     ConvertResult result;
     result.taggedText = std::move(s.taggedText);
-    result.timings = std::move(s.timings);
-    result.keyWaits = std::move(s.keyWaits);
-    result.links = std::move(s.links);
-    result.graphics = std::move(s.graphics);
     result.align = s.align;
-    result.pitch = s.pitch;
     return result;
 }

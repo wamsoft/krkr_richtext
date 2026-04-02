@@ -93,13 +93,27 @@ public:
                 out = static_cast<bool>(val);
         };
 
-        getBool(TJS_W("ignore_color"), options_.ignoreColor);
-        getBool(TJS_W("ignore_size"), options_.ignoreSize);
-        getBool(TJS_W("ignore_type"), options_.ignoreType);
-        getBool(TJS_W("ignore_face"), options_.ignoreFace);
-        getBool(TJS_W("ignore_style"), options_.ignoreStyle);
-        getBool(TJS_W("ignore_ruby"), options_.ignoreRuby);
-        getBool(TJS_W("ignore_delay"), options_.ignoreDelay);
+        // エスケープ→タグ変換段階の ignore（EscapeConverter 用）
+        getBool(TJS_W("ignore_color"), convertOptions_.ignoreColor);
+        getBool(TJS_W("ignore_size"), convertOptions_.ignoreSize);
+        getBool(TJS_W("ignore_type"), convertOptions_.ignoreType);
+        getBool(TJS_W("ignore_face"), convertOptions_.ignoreFace);
+        getBool(TJS_W("ignore_ruby"), convertOptions_.ignoreRuby);
+
+        // タグパース段階の ignore（ParseOptions 用）— 二重に無視
+        getBool(TJS_W("ignore_color"), parserOptions_.ignoreColor);
+        getBool(TJS_W("ignore_size"), parserOptions_.ignoreSize);
+        getBool(TJS_W("ignore_type"), parserOptions_.ignoreType);
+        getBool(TJS_W("ignore_face"), parserOptions_.ignoreFace);
+        getBool(TJS_W("ignore_ruby"), parserOptions_.ignoreRuby);
+
+        // タグパース段階のみの ignore
+        bool ignoreDelay = false, ignoreStyle = false;
+        getBool(TJS_W("ignore_delay"), ignoreDelay);
+        getBool(TJS_W("ignore_style"), ignoreStyle);
+        parserOptions_.ignoreDelay = ignoreDelay;
+        parserOptions_.ignoreSpacing = ignoreStyle;
+
         getBool(TJS_W("width_time_scale"), widthTimeScale_);
 
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("locale"), nullptr, &val, dict))) {
@@ -178,10 +192,6 @@ public:
 
     void clear() {
         renderEntries_.clear();
-        allTimings_.clear();
-        allKeyWaits_.clear();
-        allLinks_.clear();
-        allGraphics_.clear();
         resolvedTimings_.clear();
         characters_.clear();
         lineOffsets_.clear();
@@ -198,16 +208,26 @@ public:
      * done() が呼ばれるまで蓄積する
      */
     void render(const std::u16string& text, int autoIndent, float diff, float all, bool noResetDelay) {
+        // noResetDelay=false の場合、既存エントリの diff/all を 0 クリア（瞬間表示化）
+        if (!noResetDelay) {
+            for (auto& e : renderEntries_) {
+                e.diff = 0;
+                e.all = 0;
+            }
+        }
+
+        // all がある場合の diff 最小値調整（diff=0 だとスキップ扱いになるため）
+        float _diff = diff;
+        if (all > 0 && _diff == 0) {
+            _diff = 0.001f;
+        }
+
         RenderEntry entry;
         entry.text = text;
         entry.autoIndent = autoIndent;
-        entry.diff = diff;
+        entry.diff = _diff;
         entry.all = all;
-        entry.noResetDelay = noResetDelay;
-
-        // 現在のフォント状態をプリアンブルとしてタグ化
         entry.fontPreamble = buildFontPreamble();
-
         renderEntries_.push_back(std::move(entry));
     }
 
@@ -216,7 +236,6 @@ public:
         entry.text = u"\n";
         entry.diff = 0;
         entry.all = 0;
-        entry.noResetDelay = true;
         renderEntries_.push_back(std::move(entry));
     }
 
@@ -224,76 +243,26 @@ public:
      * レンダリング完了: 蓄積テキストを一括処理
      */
     void done() {
-        // 1. 蓄積したテキストをエスケープ変換
+        // 1. 蓄積したテキストをエスケープ変換→タグ付きテキストに結合
         EscapeConverter converter;
-        converter.setOptions(options_);
-        if (evalCallback_) {
-            converter.setEvalCallback(evalCallback_);
-        }
-        if (graphSizeCallback_) {
-            converter.setGraphSizeCallback(graphSizeCallback_);
-        }
+        converter.setOptions(convertOptions_);
+        if (graphSizeCallback_) converter.setGraphSizeCallback(graphSizeCallback_);
 
         std::u16string combinedTaggedText;
-        allTimings_.clear();
-        allKeyWaits_.clear();
-        allLinks_.clear();
-        allGraphics_.clear();
-
-        int charOffset = 0;
-        float timeOffset = 0;
 
         for (size_t i = 0; i < renderEntries_.size(); i++) {
             auto& entry = renderEntries_[i];
-
-            // フォントプリアンブルを先頭に付加
             std::u16string fullText = entry.fontPreamble + entry.text;
-
-            auto result = converter.convert(fullText, defaultFontSize_, bigFontSize_, smallFontSize_);
-
-            // タグ付きテキストを結合
+            auto result = converter.convert(fullText, defaultFontSize_, bigFontSize_, smallFontSize_,
+                                           entry.diff, entry.all);
             combinedTaggedText += result.taggedText;
-
-            // タイミング情報を結合（文字インデックスをオフセット）
-            for (auto& t : result.timings) {
-                t.charIndex += charOffset;
-                allTimings_.push_back(t);
-            }
-
-            for (auto& kw : result.keyWaits) {
-                kw.charIndex += charOffset;
-                allKeyWaits_.push_back(kw);
-            }
-
-            for (auto& link : result.links) {
-                link.startIndex += charOffset;
-                link.endIndex += charOffset;
-                allLinks_.push_back(link);
-            }
-
-            for (auto& g : result.graphics) {
-                g.charIndex += charOffset;
-                allGraphics_.push_back(g);
-            }
-
-            // アライン指定の反映
-            if (result.align != -1 && !options_.ignoreStyle) {
-                currentAlign_ = result.align;
-            }
-            if (result.pitch >= 0 && !options_.ignoreStyle) {
-                currentPitch_ = result.pitch;
-            }
-
-            // 文字数オフセット更新
-            // result の plainCharCount は timings 中の Char エントリ数で推定
-            int charCount = 0;
-            for (const auto& t : result.timings) {
-                if (t.type == TimingEntry::Type::Char) charCount++;
-            }
-            charOffset += charCount;
+            // アライン指定を反映
+            if (result.align != -2) currentAlign_ = result.align;
         }
 
-        // 2. StyledLayout でレイアウト
+        // 2. StyledLayout でレイアウト（TagParser が全メタデータを生成）
+        styledLayout_.setParserOptions(parserOptions_);
+        if (evalCallback_) styledLayout_.setEvalCallback(evalCallback_);
         buildStylesAndLayout(combinedTaggedText);
 
         // 3. タイミング解決
@@ -303,7 +272,7 @@ public:
         buildCharacterInfo();
 
         // 5. リンク矩形を構築
-        buildLinkRects();
+        linkRegions_ = styledLayout_.buildLinkRegions();
     }
 
     // ================================================================
@@ -328,9 +297,6 @@ public:
     float getFontScale() const { return fontScale_; }
     void setFontScale(float v) { fontScale_ = v; }
 
-    /**
-     * 指定時間での表示文字数
-     */
     int calcShowCount(float time) const {
         int count = 0;
         for (const auto& rt : resolvedTimings_) {
@@ -339,17 +305,11 @@ public:
         return count;
     }
 
-    /**
-     * 指定行のオフセット値
-     */
     float calcLineOffset(int lineno) const {
         if (lineno < 0 || lineno >= static_cast<int>(lineOffsets_.size())) return 0;
         return lineOffsets_[lineno];
     }
 
-    /**
-     * キー待ち情報の取得
-     */
     const std::vector<KeyWaitInfo>& getKeyWaits() const {
         return resolvedKeyWaits_;
     }
@@ -360,10 +320,10 @@ public:
 
     struct CharacterInfo {
         std::u16string text;
-        std::u16string graph;   // グラフィック文字名（空なら通常文字）
+        std::u16string graph;
         float x = 0, y = 0;
-        float cw = 0;          // 文字幅
-        float size = 0;        // フォントサイズ
+        float cw = 0;
+        float size = 0;
         std::u16string face;
         tjs_uint32 color = 0xFFFFFF;
         bool bold = false;
@@ -373,10 +333,9 @@ public:
         tjs_uint32 shadowColor = 0;
         int shadowDiff = 2;
         tjs_uint32 edgeColor = 0;
-        float delay = 0;       // 表示タイミング
-        int link = -1;         // リンク番号
-        std::string linkName;  // リンク名
-        // ルビ情報
+        float delay = 0;
+        int link = -1;
+        std::string linkName;
         struct RubyInfo {
             std::u16string text;
             float x = 0, y = 0;
@@ -385,9 +344,6 @@ public:
         std::vector<RubyInfo> ruby;
     };
 
-    /**
-     * レンダリング結果文字情報の取得
-     */
     std::vector<CharacterInfo> getCharacters(int start, int num) const {
         std::vector<CharacterInfo> result;
         int end = (num <= 0) ? static_cast<int>(characters_.size()) : std::min(start + num, static_cast<int>(characters_.size()));
@@ -443,15 +399,17 @@ public:
     // コールバック設定
     // ================================================================
 
-    void setEvalCallback(EscapeConverter::EvalCallback cb) { evalCallback_ = std::move(cb); }
+    void setEvalCallback(EvalCallback cb) { evalCallback_ = std::move(cb); }
     void setGraphSizeCallback(EscapeConverter::GraphSizeCallback cb) { graphSizeCallback_ = std::move(cb); }
     void setLabelResolver(LabelResolver cb) { labelResolver_ = std::move(cb); }
+
+    /** StyledLayout への参照を返す */
+    const StyledLayout& getStyledLayout() const { return styledLayout_; }
 
     // ================================================================
     // デフォルトプロパティ（TJS から参照可能）
     // ================================================================
 
-    // face
     const std::u16string& getDefaultFace() const { return defaultFace_; }
     void setDefaultFace(const std::u16string& v) { defaultFace_ = v; }
 
@@ -518,7 +476,6 @@ private:
     }
 
     static std::u16string colorToHex(tjs_uint32 color) {
-        // RGB の下位 24bit を6桁hex に変換
         const char hexDigits[] = "0123456789abcdef";
         std::u16string result;
         for (int i = 5; i >= 0; i--) {
@@ -527,21 +484,15 @@ private:
         return result;
     }
 
-    /**
-     * 現在のフォント状態をタグ文字列として構築
-     * render() の前に setFont/setStyle された状態を反映するためのプリアンブル
-     */
     std::u16string buildFontPreamble() {
         std::u16string preamble;
 
-        // フォントフェイス
         if (!currentFace_.empty() && currentFace_ != defaultFace_) {
             preamble += u"%f";
             preamble += currentFace_;
             preamble += u';';
         }
 
-        // フォントサイズ
         if (currentFontSize_ != defaultFontSize_ && defaultFontSize_ > 0) {
             float percent = (currentFontSize_ / defaultFontSize_) * 100.0f;
             std::u16string numStr;
@@ -553,39 +504,33 @@ private:
             preamble += u';';
         }
 
-        // Bold
-        if (currentBold_ != defaultBold_) {
+        if (currentBold_ != defaultBold_)
             preamble += currentBold_ ? u"%b1" : u"%b0";
-        }
-
-        // Italic
-        if (currentItalic_ != defaultItalic_) {
+        if (currentItalic_ != defaultItalic_)
             preamble += currentItalic_ ? u"%i1" : u"%i0";
-        }
-
-        // Color
         if (currentColor_ != defaultColor_) {
             preamble += u'#';
             preamble += colorToHex(currentColor_);
             preamble += u';';
         }
-
-        // Shadow
-        if (currentShadow_ != defaultShadow_) {
+        if (currentShadow_ != defaultShadow_)
             preamble += currentShadow_ ? u"%s1" : u"%s0";
-        }
-
-        // Edge
-        if (currentEdge_ != defaultEdge_) {
+        if (currentEdge_ != defaultEdge_)
             preamble += currentEdge_ ? u"%e1" : u"%e0";
+
+        if (currentPitch_ != defaultPitch_) {
+            std::u16string numStr;
+            int p = static_cast<int>(currentPitch_);
+            std::string s = std::to_string(p);
+            for (char c : s) numStr += static_cast<char16_t>(c);
+            preamble += u"%p";
+            preamble += numStr;
+            preamble += u';';
         }
 
         return preamble;
     }
 
-    /**
-     * デフォルトの TextStyle と Appearance を構築
-     */
     TextStyle buildDefaultStyle() {
         TextStyle style;
         if (!defaultFace_.empty()) {
@@ -603,7 +548,7 @@ private:
         style.fontSize = fontSize;
         style.fontWeight = defaultBold_ ? 700 : 400;
         style.italic = defaultItalic_;
-        style.letterSpacing = currentPitch_;
+        style.letterSpacing = defaultPitch_;
         if (!locale_.empty()) {
             style.localeId = FontManager::instance().registerLocale(locale_);
         }
@@ -612,28 +557,19 @@ private:
 
     Appearance buildDefaultAppearance() {
         Appearance app;
-        // メインカラー
         uint32_t argb = 0xFF000000 | (defaultColor_ & 0xFFFFFF);
         app.setColor(argb);
-
-        // 影
         if (defaultShadow_) {
             uint32_t shadowArgb = 0xFF000000 | (defaultShadowColor_ & 0xFFFFFF);
             app.setShadow(shadowArgb, 2.0f, 2.0f);
         }
-
-        // 縁取り
         if (defaultEdge_) {
             uint32_t edgeArgb = 0xFF000000 | (defaultEdgeColor_ & 0xFFFFFF);
             app.setOutline(edgeArgb, 1.0f);
         }
-
         return app;
     }
 
-    /**
-     * スタイルマップを構築して StyledLayout を実行
-     */
     void buildStylesAndLayout(const std::u16string& taggedText) {
         TextStyle defStyle = buildDefaultStyle();
         Appearance defApp = buildDefaultAppearance();
@@ -644,7 +580,6 @@ private:
         std::map<std::string, Appearance> appearances;
         appearances["default"] = defApp;
 
-        // HAlign 変換
         ParagraphLayout::HAlign hAlign = ParagraphLayout::HAlign::Left;
         if (currentAlign_ == 0) hAlign = ParagraphLayout::HAlign::Center;
         else if (currentAlign_ == 1) hAlign = ParagraphLayout::HAlign::Right;
@@ -660,7 +595,6 @@ private:
                             hAlign, vAlign, styles, appearances,
                             currentLineSpacing_);
 
-        // レンダリング領域情報を更新
         const auto& para = styledLayout_.getParagraphLayout();
         float totalHeight = para.getTotalHeight();
         float maxW = para.getMaxWidth();
@@ -670,29 +604,14 @@ private:
         renderRight_ = maxW;
         renderBottom_ = totalHeight;
 
-        // はみ出し判定
         renderOver_ = false;
         if (width_ > 0 && maxW > width_) renderOver_ = true;
         if (height_ > 0 && totalHeight > height_) renderOver_ = true;
     }
 
-    /**
-     * タイミング情報を解決
-     */
     void resolveAllTimings() {
-        // render ごとの diff/all をまとめて処理
-        // 簡易実装: 全エントリを一括で解決
-        float diff = 0;
-        float all = 0;
-        if (!renderEntries_.empty()) {
-            // 最後の render エントリの diff/all を使用
-            diff = renderEntries_.back().diff;
-            all = renderEntries_.back().all;
-        }
-
         // 文字幅の配列を構築（widthTimeScale 用）
         std::vector<float> charWidths;
-        // StyledLayout から各文字の advance を取得
         const auto& lineLayouts = styledLayout_.getLineLayouts();
         for (const auto& line : lineLayouts) {
             for (const auto& seg : line.segments) {
@@ -703,12 +622,14 @@ private:
             }
         }
 
+        // StyledLayout 経由で TagParser が生成したタイミング情報を取得
+        const auto& timings = styledLayout_.getTimings();
+
         resolvedTimings_ = resolveTimings(
-            allTimings_, diff, all, timeScale_,
+            timings, timeScale_,
             widthTimeScale_, charWidths,
             labelResolver_, &resolvedKeyWaits_);
 
-        // 総表示時間を計算
         totalRenderDelay_ = 0;
         for (const auto& rt : resolvedTimings_) {
             if (rt.delay > totalRenderDelay_) totalRenderDelay_ = rt.delay;
@@ -718,9 +639,6 @@ private:
         }
     }
 
-    /**
-     * 文字情報を構築
-     */
     void buildCharacterInfo() {
         characters_.clear();
         renderText_.clear();
@@ -730,13 +648,14 @@ private:
         const auto& parsed = styledLayout_.getParsed();
         const auto& plainText = parsed.plainText;
         const auto& spans = parsed.spans;
+        const auto& links = parsed.links;
+        const auto& graphics = parsed.graphics;
 
         int globalCharIdx = 0;
 
         for (size_t li = 0; li < lineLayouts.size(); li++) {
             const auto& line = lineLayouts[li];
 
-            // 行オフセット（ParagraphLayout の LineInfo から取得）
             const auto& para = styledLayout_.getParagraphLayout();
             if (li < static_cast<size_t>(para.getLineCount())) {
                 const auto& lineInfo = para.getLine(li);
@@ -750,25 +669,20 @@ private:
                 for (const auto& glyph : glyphs) {
                     CharacterInfo ci;
 
-                    // 文字テキスト
                     size_t charIdx = seg.segStart + glyph.charIndex;
                     if (charIdx < plainText.size()) {
                         ci.text = std::u16string(1, plainText[charIdx]);
                         renderText_ += plainText[charIdx];
                     }
 
-                    // 位置
                     ci.x = glyph.x;
                     ci.y = glyph.y + seg.yOffset;
                     ci.cw = glyph.advance;
                     ci.size = span.style.fontSize;
                     ci.bold = (span.style.fontWeight >= 700);
                     ci.italic = span.style.italic;
-
-                    // フォントフェイス（TextStyle にフォント名は保持されないのでデフォルトを使用）
                     ci.face = defaultFace_;
 
-                    // 色（Appearance から取得）
                     ci.color = defaultColor_;
                     ci.shadow = defaultShadow_;
                     ci.shadowColor = defaultShadowColor_;
@@ -780,31 +694,30 @@ private:
                         ci.delay = resolvedTimings_[globalCharIdx].delay;
                     }
 
-                    // リンク
+                    // リンク（StyledLayout 経由の LinkInfo を使用）
                     ci.link = -1;
-                    for (int lk = 0; lk < static_cast<int>(allLinks_.size()); lk++) {
-                        if (static_cast<size_t>(globalCharIdx) >= allLinks_[lk].startIndex &&
-                            static_cast<size_t>(globalCharIdx) < allLinks_[lk].endIndex) {
+                    for (int lk = 0; lk < static_cast<int>(links.size()); lk++) {
+                        if (charIdx >= links[lk].startIndex && charIdx < links[lk].endIndex) {
                             ci.link = lk;
-                            ci.linkName = allLinks_[lk].name;
+                            ci.linkName = links[lk].name;
                             break;
                         }
                     }
 
-                    // グラフィック文字
-                    for (const auto& g : allGraphics_) {
-                        if (g.charIndex == globalCharIdx) {
+                    // グラフィック文字（StyledLayout 経由の GraphInfo を使用）
+                    for (const auto& g : graphics) {
+                        if (g.charIndex == static_cast<int>(charIdx)) {
                             ci.graph = g.name;
                             break;
                         }
                     }
 
-                    // ルビ情報（TagParser の span から取得）
+                    // ルビ情報
                     if (span.hasRuby && !span.rubyText.empty()) {
                         CharacterInfo::RubyInfo ri;
                         ri.text = span.rubyText;
                         ri.x = glyph.x;
-                        ri.y = glyph.y - span.style.fontSize * 0.6f; // ルビ位置（概算）
+                        ri.y = glyph.y - span.style.fontSize * 0.6f;
                         ri.size = span.style.fontSize * 0.5f;
                         ci.ruby.push_back(ri);
                     }
@@ -814,48 +727,9 @@ private:
                 }
             }
 
-            // 行末に改行を追加
             if (li < lineLayouts.size() - 1) {
                 renderText_ += u'\n';
             }
-        }
-    }
-
-    /**
-     * リンク矩形を構築
-     */
-    void buildLinkRects() {
-        linkRegions_.clear();
-
-        for (const auto& link : allLinks_) {
-            LinkRegion region;
-            region.name = link.name;
-
-            int lastLine = -1;
-            for (size_t ci = link.startIndex; ci < link.endIndex && ci < characters_.size(); ci++) {
-                region.charIndices.push_back(static_cast<int>(ci));
-
-                const auto& ch = characters_[ci];
-                float l = ch.x;
-                float t = ch.y;
-                float r = l + ch.cw;
-                float b = t + ch.size;
-
-                // 行の判定（Y座標が変わったら新しい行）
-                int line = static_cast<int>(ch.y); // 簡易的にY座標で行判定
-                if (region.rects.empty() || line != lastLine) {
-                    region.rects.push_back({l, t, r, b});
-                    lastLine = line;
-                } else {
-                    auto& rect = region.rects.back();
-                    if (l < rect.left) rect.left = l;
-                    if (t < rect.top) rect.top = t;
-                    if (r > rect.right) rect.right = r;
-                    if (b > rect.bottom) rect.bottom = b;
-                }
-            }
-
-            linkRegions_.push_back(std::move(region));
         }
     }
 
@@ -887,7 +761,6 @@ private:
     // メンバ変数
     // ================================================================
 
-    // レンダリング領域
     float width_ = 0, height_ = 0;
 
     // デフォルト値
@@ -928,34 +801,30 @@ private:
     int currentValign_ = -1;
 
     // オプション
-    EscapeConverter::ConvertOptions options_;
+    EscapeConverter::ConvertOptions convertOptions_;
+    TagParser::ParseOptions parserOptions_;
     bool widthTimeScale_ = false;
     float timeScale_ = 1.0f;
     float fontScale_ = 1.0f;
     std::string locale_;
 
     // コールバック
-    EscapeConverter::EvalCallback evalCallback_;
+    EvalCallback evalCallback_;
     EscapeConverter::GraphSizeCallback graphSizeCallback_;
     LabelResolver labelResolver_;
 
     // render() で蓄積するエントリ
     struct RenderEntry {
         std::u16string text;
-        std::u16string fontPreamble; // render 時点のフォント状態プリアンブル
+        std::u16string fontPreamble;
         int autoIndent = 0;
         float diff = 0;
         float all = 0;
-        bool noResetDelay = false;
     };
     std::vector<RenderEntry> renderEntries_;
 
     // done() 後の結果
     StyledLayout styledLayout_;
-    std::vector<TimingEntry> allTimings_;
-    std::vector<KeyWaitInfo> allKeyWaits_;
-    std::vector<EscapeConverter::LinkInfo> allLinks_;
-    std::vector<EscapeConverter::GraphInfo> allGraphics_;
     std::vector<ResolvedTiming> resolvedTimings_;
     std::vector<KeyWaitInfo> resolvedKeyWaits_;
     std::vector<CharacterInfo> characters_;
