@@ -614,7 +614,15 @@ private:
             for (char16_t c : defaultFace_) {
                 if (c < 128) faceNarrow += static_cast<char>(c);
             }
+            // 1. 登録済みコレクション名で参照を試す
             auto collection = FontManager::instance().getCollection(faceNarrow);
+            // 2. 見つからなければ単一フォント名として createCollection に委ね、
+            //    fonts_ の登録名 → family 名 → "family Style" 連結名の順で
+            //    フォールバック検索される (richtext 9de67e1)
+            if (!collection) {
+                std::vector<std::string> names = { faceNarrow };
+                collection = FontManager::instance().createCollection(names);
+            }
             if (collection) {
                 style.fontCollection = collection;
             }

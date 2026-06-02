@@ -100,6 +100,10 @@ class RichText {
 	 * @description
 	 * 複数のフォントをまとめて名前を付けて登録します。
 	 * Style.setFonts() で配列を渡す代わりに、コレクション名で参照できます。
+	 *
+	 * 配列の各要素は registerFont の登録名のほか、フォントファイル内の
+	 * family 名（例: "Noto Sans JP"）や "family Style" 連結名
+	 * （例: "Noto Sans JP Bold"）でも参照できます。
 	 * 使用例:
 	 *   RichText.registerCollection("myFonts", ["NotoSansJP", "NotoEmoji"]);
 	 */
@@ -147,6 +151,11 @@ class RichText {
 		 * @description
 		 * 配列の順序がフォールバック優先度になります。
 		 * 最初のフォントで描画できない文字は次のフォントで描画されます。
+		 *
+		 * 配列の各要素は registerFont で指定した登録名のほか、
+		 * 登録名で見つからなければフォントファイル内の family 名
+		 * （例: "Noto Sans JP"）や "family Style" 連結名
+		 * （例: "Noto Sans JP Bold"）でも参照できます。
 		 * 使用例:
 		 *   style.setFonts(["メインフォント", "絵文字フォント", "フォールバック"]);
 		 */
@@ -1152,6 +1161,10 @@ class RichTextRenderBase {
 	 *
 	 * 設定可能なキー:
 	 *   face          フォントフェイス
+	 *                 registerCollection で登録したコレクション名のほか、
+	 *                 registerFont の登録名、フォントファイル内の family 名
+	 *                 （例: "Noto Sans JP"）、"family Style" 連結名
+	 *                 （例: "Noto Sans JP Bold"）でも指定可能。
 	 *   fontsize      フォントサイズ
 	 *   bigfontsize   大サイズフォントサイズ（%B 用）
 	 *   smallfontsize 小サイズフォントサイズ（%S 用）
