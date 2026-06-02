@@ -19,10 +19,6 @@
 
 using namespace richtext;
 
-// RichTextRender (TextRender 互換クラス)
-// ncbind.hpp の後・richtext.hpp の後にインクルード
-#include "RichTextRender.hpp"
-
 // ============================================================================
 // ログ出力
 // ============================================================================
@@ -1566,185 +1562,12 @@ NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
 // RichTextRender TJS バインディング
 // ============================================================================
 
-/**
- * RichTextRender の TJS ラッパー
- * ncbind で TJS2 クラスとして公開する
- */
-class RichTextRenderWrapper {
-public:
-    RichTextRenderWrapper() {
-        // TJS コールバックはバインド後に設定される
-    }
-
-    void setRenderSize(float w, float h) { render_.setRenderSize(w, h); }
-
-    void setDefault(tTJSVariant elm) {
-        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
-        render_.setDefaultFromDict(dict);
-    }
-
-    void setOption(tTJSVariant elm) {
-        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
-        render_.setOptionFromDict(dict);
-    }
-
-    void setFont(tTJSVariant elm) {
-        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
-        render_.setFontFromDict(dict);
-    }
-
-    void resetFont() { render_.resetFont(); }
-
-    void setStyle(tTJSVariant elm) {
-        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
-        render_.setStyleFromDict(dict);
-    }
-
-    void resetStyle() { render_.resetStyle(); }
-
-    void clear() { render_.clear(); }
-
-    void newline() { render_.newline(); }
-
-    void done() { render_.done(); }
-
-    // プロパティ
-    bool getRenderOver() const { return render_.getRenderOver(); }
-    int getRenderLines() const { return render_.getRenderLines(); }
-    int getRenderCount() const { return render_.getRenderCount(); }
-    float getRenderDelay() const { return render_.getRenderDelay(); }
-    float getRenderLeft() const { return render_.getRenderLeft(); }
-    float getRenderTop() const { return render_.getRenderTop(); }
-    float getRenderRight() const { return render_.getRenderRight(); }
-    float getRenderBottom() const { return render_.getRenderBottom(); }
-
-    ttstr getRenderText() const {
-        return ttstr(reinterpret_cast<const tjs_char*>(render_.getRenderText().c_str()));
-    }
-
-    float getTimeScale() const { return render_.getTimeScale(); }
-    void setTimeScale(float v) { render_.setTimeScale(v); }
-
-    float getFontScale() const { return render_.getFontScale(); }
-    void setFontScale(float v) { render_.setFontScale(v); }
-
-    // デフォルトプロパティ
-    ttstr getDefaultFace() const {
-        return ttstr(reinterpret_cast<const tjs_char*>(render_.getDefaultFace().c_str()));
-    }
-    void setDefaultFace(const tjs_char* v) {
-        render_.setDefaultFace(std::u16string(reinterpret_cast<const char16_t*>(v)));
-    }
-
-    float getDefaultFontSize() const { return render_.getDefaultFontSize(); }
-    void setDefaultFontSize(float v) { render_.setDefaultFontSize(v); }
-    float getDefaultBigFontSize() const { return render_.getDefaultBigFontSize(); }
-    void setDefaultBigFontSize(float v) { render_.setDefaultBigFontSize(v); }
-    float getDefaultSmallFontSize() const { return render_.getDefaultSmallFontSize(); }
-    void setDefaultSmallFontSize(float v) { render_.setDefaultSmallFontSize(v); }
-    float getDefaultLineSize() const { return render_.getDefaultLineSize(); }
-    void setDefaultLineSize(float v) { render_.setDefaultLineSize(v); }
-    float getDefaultLineSpacing() const { return render_.getDefaultLineSpacing(); }
-    void setDefaultLineSpacing(float v) { render_.setDefaultLineSpacing(v); }
-    float getDefaultPitch() const { return render_.getDefaultPitch(); }
-    void setDefaultPitch(float v) { render_.setDefaultPitch(v); }
-    int getDefaultAlign() const { return render_.getDefaultAlign(); }
-    void setDefaultAlign(int v) { render_.setDefaultAlign(v); }
-    int getDefaultValign() const { return render_.getDefaultValign(); }
-    void setDefaultValign(int v) { render_.setDefaultValign(v); }
-    float getDefaultRubySize() const { return render_.getDefaultRubySize(); }
-    void setDefaultRubySize(float v) { render_.setDefaultRubySize(v); }
-    tjs_uint32 getDefaultChColor() const { return render_.getDefaultColor(); }
-    void setDefaultChColor(tjs_uint32 v) { render_.setDefaultColor(v); }
-    bool getDefaultShadow() const { return render_.getDefaultShadow(); }
-    void setDefaultShadow(bool v) { render_.setDefaultShadow(v); }
-    tjs_uint32 getDefaultShadowColor() const { return render_.getDefaultShadowColor(); }
-    void setDefaultShadowColor(tjs_uint32 v) { render_.setDefaultShadowColor(v); }
-    bool getDefaultEdge() const { return render_.getDefaultEdge(); }
-    void setDefaultEdge(bool v) { render_.setDefaultEdge(v); }
-    tjs_uint32 getDefaultEdgeColor() const { return render_.getDefaultEdgeColor(); }
-    void setDefaultEdgeColor(tjs_uint32 v) { render_.setDefaultEdgeColor(v); }
-    bool getDefaultBold() const { return render_.getDefaultBold(); }
-    void setDefaultBold(bool v) { render_.setDefaultBold(v); }
-    bool getDefaultItalic() const { return render_.getDefaultItalic(); }
-    void setDefaultItalic(bool v) { render_.setDefaultItalic(v); }
-
-    int calcShowCount(float time) const { return render_.calcShowCount(time); }
-    float calcLineOffset(int lineno) const { return render_.calcLineOffset(lineno); }
-
-    bool isLinkContains(int link, float x, float y) const {
-        return render_.isLinkContains(link, x, y);
-    }
-
-    int getLinkOfPosition(float x, float y) const {
-        return render_.getLinkOfPosition(x, y);
-    }
-
-    // TJS objthis 設定（コールバック用）
-    void setTJSObject(iTJSDispatch2* obj) { tjsObj_ = obj; }
-
-    // コールバック設定
-    void setupCallbacks() {
-        iTJSDispatch2* obj = tjsObj_;
-
-        // onEval コールバック
-        render_.setEvalCallback([obj](const std::u16string& name) -> std::u16string {
-            if (!obj) return std::u16string();
-            tTJSVariant result;
-            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
-            tTJSVariant* params[] = { &param };
-            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onEval"), nullptr, &result, 1, params, obj))) {
-                ttstr str = result.GetString();
-                return std::u16string(reinterpret_cast<const char16_t*>(str.c_str()));
-            }
-            return std::u16string();
-        });
-
-        // onLabel コールバック
-        render_.setLabelResolver([obj](const std::string& label) -> float {
-            if (!obj) return 0.0f;
-            tTJSVariant result;
-            ttstr labelStr(label.c_str());
-            tTJSVariant param(labelStr);
-            tTJSVariant* params[] = { &param };
-            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onLabel"), nullptr, &result, 1, params, obj))) {
-                return static_cast<float>(result.AsReal());
-            }
-            return 0.0f;
-        });
-
-        // onGetGraphSize コールバック
-        render_.setGraphSizeCallback([obj](const std::u16string& name, float& w, float& h) -> bool {
-            if (!obj) return false;
-            tTJSVariant result;
-            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
-            tTJSVariant* params[] = { &param };
-            if (TJS_SUCCEEDED(obj->FuncCall(0, TJS_W("onGetGraphSize"), nullptr, &result, 1, params, obj))) {
-                if (result.Type() == tvtObject) {
-                    iTJSDispatch2* dict = result.AsObjectNoAddRef();
-                    tTJSVariant wv, hv;
-                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("width"), nullptr, &wv, dict)))
-                        w = static_cast<float>(wv.AsReal());
-                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("height"), nullptr, &hv, dict)))
-                        h = static_cast<float>(hv.AsReal());
-                    return true;
-                }
-            }
-            return false;
-        });
-    }
-
-    RichTextRender& getRender() { return render_; }
-
-private:
-    RichTextRender render_;
-    iTJSDispatch2* tjsObj_ = nullptr;
-};
+#include "RichTextRender.hpp"
 
 // drawToLayer RawCallback
 static tjs_error TJS_INTF_METHOD
 RichTextRender_drawToLayer_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                       tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                       tTJSVariant** param, RichTextRender* objthis)
 {
     if (numparams < 3) return TJS_E_BADPARAMCOUNT;
 
@@ -1773,7 +1596,7 @@ RichTextRender_drawToLayer_RawCallback(tTJSVariant* result, tjs_int numparams,
     TextRenderer renderer;
     renderer.setCanvas(buffer, width, height, pitch);
 
-    const auto& layout = objthis->getRender().getStyledLayout();
+    const auto& layout = objthis->getStyledLayout();
     richtext::RectF rect = renderer.drawStyledLayout(layout, x, y, maxChars);
     renderer.sync();
 
@@ -1793,7 +1616,7 @@ RichTextRender_drawToLayer_RawCallback(tTJSVariant* result, tjs_int numparams,
 // render() RawCallback（省略可能引数対応）
 static tjs_error TJS_INTF_METHOD
 RichTextRender_render_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                   tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                   tTJSVariant** param, RichTextRender* objthis)
 {
     if (numparams < 1) return TJS_E_BADPARAMCOUNT;
     ttstr text = static_cast<ttstr>(*param[0]);
@@ -1803,7 +1626,7 @@ RichTextRender_render_RawCallback(tTJSVariant* result, tjs_int numparams,
     bool noResetDelay = (numparams >= 5) ? (param[4]->AsInteger() != 0) : false;
 
     std::u16string u16text(reinterpret_cast<const char16_t*>(text.c_str()));
-    objthis->getRender().render(u16text, autoIndent, diff, all, noResetDelay);
+    objthis->render(u16text, autoIndent, diff, all, noResetDelay);
 
     if (result) *result = true;
     return TJS_S_OK;
@@ -1812,12 +1635,12 @@ RichTextRender_render_RawCallback(tTJSVariant* result, tjs_int numparams,
 // getCharacters() RawCallback
 static tjs_error TJS_INTF_METHOD
 RichTextRender_getCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                          tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                          tTJSVariant** param, RichTextRender* objthis)
 {
     int start = (numparams >= 1) ? static_cast<int>(param[0]->AsInteger()) : 0;
     int num = (numparams >= 2) ? static_cast<int>(param[1]->AsInteger()) : 0;
 
-    auto chars = objthis->getRender().getCharacters(start, num);
+    auto chars = objthis->getCharacters(start, num);
 
     // TJS 配列に変換
     iTJSDispatch2* array = TJSCreateArrayObject();
@@ -1906,31 +1729,31 @@ RichTextRender_getCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
     return TJS_S_OK;
 }
 
-// getKeyWaits / getResolvedTimings の RichTextRenderWrapper 特殊化
+// getKeyWaits / getResolvedTimings の RichTextRender 特殊化
 template<>
 tjs_error TJS_INTF_METHOD
-getKeyWaits_RawCallback<RichTextRenderWrapper>(tTJSVariant* result, tjs_int numparams,
-                                               tTJSVariant** param, RichTextRenderWrapper* objthis)
+getKeyWaits_RawCallback<RichTextRender>(tTJSVariant* result, tjs_int numparams,
+                                               tTJSVariant** param, RichTextRender* objthis)
 {
-    if (result) *result = keyWaitsToVariant(objthis->getRender().getKeyWaits());
+    if (result) *result = keyWaitsToVariant(objthis->getKeyWaits());
     return TJS_S_OK;
 }
 
 template<>
 tjs_error TJS_INTF_METHOD
-getResolvedTimings_RawCallback<RichTextRenderWrapper>(tTJSVariant* result, tjs_int numparams,
-                                                      tTJSVariant** param, RichTextRenderWrapper* objthis)
+getResolvedTimings_RawCallback<RichTextRender>(tTJSVariant* result, tjs_int numparams,
+                                                      tTJSVariant** param, RichTextRender* objthis)
 {
-    if (result) *result = resolvedTimingsToVariant(objthis->getRender().getStyledLayout().getResolvedTimings());
+    if (result) *result = resolvedTimingsToVariant(objthis->getStyledLayout().getResolvedTimings());
     return TJS_S_OK;
 }
 
 // getLinkNames() RawCallback
 static tjs_error TJS_INTF_METHOD
 RichTextRender_getLinkNames_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                         tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                         tTJSVariant** param, RichTextRender* objthis)
 {
-    auto names = objthis->getRender().getLinkNames();
+    auto names = objthis->getLinkNames();
     iTJSDispatch2* array = TJSCreateArrayObject();
     for (size_t i = 0; i < names.size(); i++) {
         tTJSVariant nameVal(ttstr(names[i].c_str()));
@@ -1946,11 +1769,11 @@ RichTextRender_getLinkNames_RawCallback(tTJSVariant* result, tjs_int numparams,
 // getLinkRects() RawCallback
 static tjs_error TJS_INTF_METHOD
 RichTextRender_getLinkRects_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                         tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                         tTJSVariant** param, RichTextRender* objthis)
 {
     if (numparams < 1) return TJS_E_BADPARAMCOUNT;
     int link = static_cast<int>(param[0]->AsInteger());
-    auto rects = objthis->getRender().getLinkRects(link);
+    auto rects = objthis->getLinkRects(link);
 
     iTJSDispatch2* array = TJSCreateArrayObject();
     for (size_t i = 0; i < rects.size(); i++) {
@@ -1975,13 +1798,13 @@ RichTextRender_getLinkRects_RawCallback(tTJSVariant* result, tjs_int numparams,
 // getLinkCharacters() RawCallback
 static tjs_error TJS_INTF_METHOD
 RichTextRender_getLinkCharacters_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                              tTJSVariant** param, RichTextRenderWrapper* objthis)
+                                              tTJSVariant** param, RichTextRender* objthis)
 {
     if (numparams < 1) return TJS_E_BADPARAMCOUNT;
     int link = static_cast<int>(param[0]->AsInteger());
 
     // getCharacters と同じフォーマットで返す
-    auto chars = objthis->getRender().getLinkCharacters(link);
+    auto chars = objthis->getLinkCharacters(link);
     iTJSDispatch2* array = TJSCreateArrayObject();
     for (size_t i = 0; i < chars.size(); i++) {
         const auto& ci = chars[i];
@@ -2003,25 +1826,8 @@ RichTextRender_getLinkCharacters_RawCallback(tTJSVariant* result, tjs_int numpar
     return TJS_S_OK;
 }
 
-// RichTextRender ncbind 登録
-NCB_GET_INSTANCE_HOOK(RichTextRenderWrapper)
-{
-    NCB_INSTANCE_GETTER(objthis) {
-        ClassT* obj = GetNativeInstance(objthis);
-        if (!obj) {
-            obj = new ClassT();
-            SetNativeInstance(objthis, obj);
-            obj->setTJSObject(objthis);
-            obj->setupCallbacks();
-        }
-        return obj;
-    }
-    ~NCB_GET_INSTANCE_HOOK_CLASS() {
-    }
-};
-
-NCB_REGISTER_CLASS_DIFFER(TextRenderBase, RichTextRenderWrapper) {
-    NCB_CONSTRUCTOR(());
+NCB_REGISTER_CLASS_DIFFER(RichTextRenderBase, RichTextRender) {
+	Factory(&ClassT::factory);
 
     // 設定
     NCB_METHOD(setRenderSize);
@@ -2063,7 +1869,7 @@ NCB_REGISTER_CLASS_DIFFER(TextRenderBase, RichTextRenderWrapper) {
     NCB_PROPERTY(defaultAlign, getDefaultAlign, setDefaultAlign);
     NCB_PROPERTY(defaultValign, getDefaultValign, setDefaultValign);
     NCB_PROPERTY(defaultRubySize, getDefaultRubySize, setDefaultRubySize);
-    NCB_PROPERTY(defaultChColor, getDefaultChColor, setDefaultChColor);
+    NCB_PROPERTY(defaultColor, getDefaultColor, setDefaultColor);
     NCB_PROPERTY(defaultShadow, getDefaultShadow, setDefaultShadow);
     NCB_PROPERTY(defaultShadowColor, getDefaultShadowColor, setDefaultShadowColor);
     NCB_PROPERTY(defaultEdge, getDefaultEdge, setDefaultEdge);
@@ -2076,8 +1882,8 @@ NCB_REGISTER_CLASS_DIFFER(TextRenderBase, RichTextRenderWrapper) {
 
     // 結果取得メソッド
     NCB_METHOD_RAW_CALLBACK(getCharacters, RichTextRender_getCharacters_RawCallback, 0);
-    NCB_METHOD_RAW_CALLBACK(getKeyWaits, getKeyWaits_RawCallback<RichTextRenderWrapper>, 0);
-    NCB_METHOD_RAW_CALLBACK(getResolvedTimings, getResolvedTimings_RawCallback<RichTextRenderWrapper>, 0);
+    NCB_METHOD_RAW_CALLBACK(getKeyWaits, getKeyWaits_RawCallback<RichTextRender>, 0);
+    NCB_METHOD_RAW_CALLBACK(getResolvedTimings, getResolvedTimings_RawCallback<RichTextRender>, 0);
     NCB_METHOD(calcShowCount);
     NCB_METHOD(calcLineOffset);
 

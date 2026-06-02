@@ -1114,7 +1114,7 @@ class Layer {
  *   var chars = tr.getCharacters(0, 0);  // 全文字情報取得
  *   var count = tr.calcShowCount(500);    // 500ms時点の表示文字数
  */
-class TextRenderBase {
+class RichTextRenderBase {
 
 	/**
 	 * コンストラクタ

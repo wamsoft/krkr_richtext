@@ -15,8 +15,8 @@ var dm = Debug.message;
 dm("startup test");
 
 // プラグイン読み込み（実行環境に応じてパス調整）
-Plugins.link("build/x64-windows/Release/richtext.dll");
-//Plugins.link("build/x64-windows/Debug/richtext.dll");
+//Plugins.link("build/x64-windows/Release/krkr_richtext.dll");
+Plugins.link("build/x64-windows/Debug/krkr_richtext.dll");
 
 // ============================================================================
 // グローバル設定
@@ -28,6 +28,21 @@ const LEFT   = 40;
 const PARA_W = WIDTH - LEFT * 2;
 
 // ============================================================================
+// サンプルのレンダークラス
+// ============================================================================
+
+// RichTextRenderBase を継承してコールバックを実装
+class SampleTextRender extends RichTextRenderBase {
+    function SampleTextRender() {
+        super.RichTextRenderBase();
+    }
+    function onEval(name) {
+        if (name == "player") return "プレイヤー";
+        return "??";
+    }
+}
+
+// ============================================================================
 // メインウィンドウ
 // ============================================================================
 
@@ -37,6 +52,7 @@ class MainWindow extends Window {
     var currentSample;   // 現在のサンプルインデックス
     var samples;         // サンプル関数配列
     var sampleNames;     // サンプル名配列
+    var sampleTimer;     // サンプル用タイマー（逐次表示等）
     
     // スタイル・外観
     var baseStyle;
@@ -82,6 +98,7 @@ class MainWindow extends Window {
     }
     
     function finalize() {
+        if (sampleTimer !== void) invalidate sampleTimer;
         invalidate layer;
         super.finalize();
     }
@@ -186,7 +203,8 @@ class MainWindow extends Window {
             sample12_EmojiComparison,
             sample13_VariableFontWeight,
             sample14_MixedLanguages,
-            sample15_TextureAtlas
+            sample15_TextureAtlas,
+            sample16_TextRenderBase
         ];
 
         sampleNames = [
@@ -204,7 +222,8 @@ class MainWindow extends Window {
             "[12] Color vs Monochrome emoji",
             "[13] Variable Font weight",
             "[14] Mixed languages + emoji",
-            "[15] TextureAtlas"
+            "[15] TextureAtlas",
+            "[16] TextRenderBase (sequential)"
         ];
     }
     
@@ -212,6 +231,12 @@ class MainWindow extends Window {
     // サンプル表示
     //--------------------------------------------------------------------------
     function showCurrentSample() {
+        // タイマー停止
+        if (sampleTimer !== void) {
+            invalidate sampleTimer;
+            sampleTimer = void;
+        }
+
         // 背景クリア
         layer.fillRect(0, 0, WIDTH, HEIGHT, 0xFFFFFFFF);
         
@@ -782,6 +807,92 @@ class MainWindow extends Window {
         y += 90;
 
         invalidate atlasLayer;
+    }
+
+    //==========================================================================
+    // サンプル16: TextRenderBase 逐次表示
+    //==========================================================================
+    function sample16_TextRenderBase(startY) {
+        var y = startY;
+
+        drawLabel("TextRenderBase: Timer による逐次表示デモ", LEFT, y);
+        y += 24;
+
+        var tr = new SampleTextRender();
+        tr.setRenderSize(PARA_W, 400);
+        tr.setDefault(%[
+            "face" => "sans",
+            "fontsize" => 28,
+            "color" => 0xFF222222
+        ]);
+
+        // テキストを蓄積してレンダリング
+        tr.render("こんにちは、$player;さん！", 0, 50, 0);
+        tr.render("\\n今日はとても%i1良い天気%i0ですね。", 0, 50, 0);
+        tr.render("\\n#CC0000;赤い文字#222222; と %b1太字%b0 で装飾できます。", 0, 50, 0);
+        tr.done();
+
+        dm("TextRenderBase: renderCount=" + tr.renderCount
+            + " renderDelay=" + tr.renderDelay
+            + " renderLines=" + tr.renderLines);
+        dm("  renderText=[" + tr.renderText + "]");
+
+        // キー待ち情報を表示
+        var keyWaits = tr.getKeyWaits();
+        dm("  keyWaits: " + keyWaits.count + " entries");
+        for (var i = 0; i < keyWaits.count; i++) {
+            dm("    [" + i + "] pos=" + keyWaits[i].pos + " time=" + keyWaits[i].time);
+        }
+
+        // 描画領域の枠線
+        var dx = LEFT;
+        var dy = y;
+        drawBorder(dx - 2, dy - 2, PARA_W + 4, 200);
+
+        // Timer で逐次描画
+        var elapsed = 0;
+        var interval = 16;  // ~60fps
+        var totalDelay = tr.renderDelay;
+        var totalChars = tr.renderCount;
+
+        // 情報表示
+        drawLabel("totalDelay=" + (int)totalDelay + "ms  totalChars=" + totalChars, LEFT, dy + 205);
+
+        sampleTimer = new Timer(this, "onTextRenderTimer");
+        sampleTimer.interval = interval;
+        sampleTimer.tr = tr;
+        sampleTimer.elapsed = 0;
+        sampleTimer.totalDelay = totalDelay;
+        sampleTimer.dx = dx;
+        sampleTimer.dy = dy;
+        sampleTimer.enabled = true;
+    }
+
+    function onTextRenderTimer() {
+        var timer = sampleTimer;
+        var tr = timer.tr;
+
+        timer.elapsed += timer.interval;
+
+        // 完了判定を先にチェック（totalDelay=0 でのゼロ除算回避）
+        if (timer.totalDelay <= 0 || timer.elapsed >= timer.totalDelay) {
+            layer.fillRect(timer.dx, timer.dy, PARA_W, 200, 0xFFFFFFFF);
+            tr.drawToLayer(layer, timer.dx, timer.dy);
+            drawLabel("elapsed=" + (int)timer.elapsed + "ms  chars=" + tr.renderCount + "  100%",
+                      LEFT + 300, timer.dy + 205);
+            timer.enabled = false;
+            return;
+        }
+
+        var count = tr.calcShowCount(timer.elapsed);
+
+        layer.fillRect(timer.dx, timer.dy, PARA_W, 200, 0xFFFFFFFF);
+        tr.drawToLayer(layer, timer.dx, timer.dy, count);
+
+        var pct = (int)(timer.elapsed * 100 / timer.totalDelay);
+        if (pct > 100) pct = 100;
+        drawLabel("elapsed=" + (int)timer.elapsed + "ms  chars=" + count + "  " + pct + "%",
+                  LEFT + 300, timer.dy + 205);
     }
 
     //--------------------------------------------------------------------------

@@ -22,10 +22,68 @@ using namespace richtext;
  *   → getCharacters() / calcShowCount() 等で結果取得
  */
 class RichTextRender {
-public:
-    RichTextRender() {
-        resetDefaults();
+
+    iTJSDispatch2* objthis;
+
+protected:
+
+    // コールバック設定
+    RichTextRender(iTJSDispatch2* obj) : objthis(obj) {
+
+        auto objthis = this->objthis;
+        // onEval コールバック
+        setEvalCallback([objthis](const std::u16string& name) -> std::u16string {
+            if (!objthis) return std::u16string();
+            tTJSVariant result;
+            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(objthis->FuncCall(0, TJS_W("onEval"), nullptr, &result, 1, params, objthis))) {
+                ttstr str = result.GetString();
+                return std::u16string(reinterpret_cast<const char16_t*>(str.c_str()));
+            }
+            return std::u16string();
+        });
+
+        // onLabel コールバック
+        setLabelResolver([objthis](const std::string& label) -> float {
+            if (!objthis) return 0.0f;
+            tTJSVariant result;
+            ttstr labelStr(label.c_str());
+            tTJSVariant param(labelStr);
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(objthis->FuncCall(0, TJS_W("onLabel"), nullptr, &result, 1, params, objthis))) {
+                return static_cast<float>(result.AsReal());
+            }
+            return 0.0f;
+        });
+
+        // onGetGraphSize コールバック
+        setGraphSizeCallback([objthis](const std::u16string& name, float& w, float& h) -> bool {
+            if (!objthis) return false;
+            tTJSVariant result;
+            tTJSVariant param(ttstr(reinterpret_cast<const tjs_char*>(name.c_str())));
+            tTJSVariant* params[] = { &param };
+            if (TJS_SUCCEEDED(objthis->FuncCall(0, TJS_W("onGetGraphSize"), nullptr, &result, 1, params, objthis))) {
+                if (result.Type() == tvtObject) {
+                    iTJSDispatch2* dict = result.AsObjectNoAddRef();
+                    tTJSVariant wv, hv;
+                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("width"), nullptr, &wv, dict)))
+                        w = static_cast<float>(wv.AsReal());
+                    if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("height"), nullptr, &hv, dict)))
+                        h = static_cast<float>(hv.AsReal());
+                    return true;
+                }
+            }
+            return false;
+        });
     }
+    
+public:
+	// ファクトリ
+	static tjs_error factory(RichTextRender **result, tjs_int numparams, tTJSVariant **params, iTJSDispatch2 *objthis) {
+		*result = new RichTextRender(objthis);
+		return S_OK;
+	}
 
     // ================================================================
     // 設定
@@ -40,7 +98,8 @@ public:
      * デフォルト値の設定
      * TJS 辞書から各プロパティを取得
      */
-    void setDefaultFromDict(iTJSDispatch2* dict) {
+    void setDefault(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
         if (!dict) return;
         tTJSVariant val;
 
@@ -53,17 +112,17 @@ public:
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("smallfontsize"), nullptr, &val, dict)))
             smallFontSize_ = static_cast<float>(val.AsReal());
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("bold"), nullptr, &val, dict)))
-            defaultBold_ = static_cast<bool>(val);
+            defaultBold_ = val.AsInteger() != 0;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("italic"), nullptr, &val, dict)))
-            defaultItalic_ = static_cast<bool>(val);
+            defaultItalic_ = val.AsInteger() != 0;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("color"), nullptr, &val, dict)))
             defaultColor_ = static_cast<tjs_uint32>(val.AsInteger());
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadow"), nullptr, &val, dict)))
-            defaultShadow_ = static_cast<bool>(val);
+            defaultShadow_ = val.AsInteger() != 0;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadowcolor"), nullptr, &val, dict)))
             defaultShadowColor_ = static_cast<tjs_uint32>(val.AsInteger());
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edge"), nullptr, &val, dict)))
-            defaultEdge_ = static_cast<bool>(val);
+            defaultEdge_ = val.AsInteger() != 0;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edgecolor"), nullptr, &val, dict)))
             defaultEdgeColor_ = static_cast<tjs_uint32>(val.AsInteger());
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linespacing"), nullptr, &val, dict)))
@@ -84,7 +143,9 @@ public:
      * オプション設定
      * TJS 辞書から ignore_* 等を取得
      */
-    void setOptionFromDict(iTJSDispatch2* dict) {
+    void setOption(tTJSVariant elm) {
+
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
         if (!dict) return;
         tTJSVariant val;
 
@@ -128,7 +189,10 @@ public:
     // フォント / スタイル操作
     // ================================================================
 
-    void setFontFromDict(iTJSDispatch2* dict) {
+    void setFont(tTJSVariant elm) {
+
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
+
         if (!dict) return;
         tTJSVariant val;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("face"), nullptr, &val, dict)))
@@ -163,7 +227,8 @@ public:
         currentEdgeColor_ = defaultEdgeColor_;
     }
 
-    void setStyleFromDict(iTJSDispatch2* dict) {
+    void setStyle(tTJSVariant elm) {
+        iTJSDispatch2* dict = elm.AsObjectNoAddRef();
         if (!dict) return;
         tTJSVariant val;
         if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linespacing"), nullptr, &val, dict)))
@@ -288,7 +353,7 @@ public:
     float getRenderRight() const { return renderRight_; }
     float getRenderBottom() const { return renderBottom_; }
 
-    const std::u16string& getRenderText() const { return renderText_; }
+    const tjs_char * getRenderText() const { return (const tjs_char*)renderText_.c_str(); }
 
     float getTimeScale() const { return timeScale_; }
     void setTimeScale(float v) { timeScale_ = v; }
@@ -405,8 +470,8 @@ public:
     // デフォルトプロパティ（TJS から参照可能）
     // ================================================================
 
-    const std::u16string& getDefaultFace() const { return defaultFace_; }
-    void setDefaultFace(const std::u16string& v) { defaultFace_ = v; }
+    const tjs_char *getDefaultFace() const { return (const tjs_char*)defaultFace_.c_str(); }
+    void setDefaultFace(const tjs_char *v) { defaultFace_ = (v) ? reinterpret_cast<const char16_t*>(v) : u""; }
 
     float getDefaultFontSize() const { return defaultFontSize_; }
     void setDefaultFontSize(float v) { defaultFontSize_ = v; }
