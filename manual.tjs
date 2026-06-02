@@ -1146,6 +1146,10 @@ class RichTextRenderBase {
 	 * デフォルト値の設定
 	 * @param elm 辞書
 	 * @description
+	 * 辞書に含まれるキーのみが反映される（含まれないキーは現在値を維持）。
+	 * setDefault 呼び出し後は内部で resetFont() / resetStyle() 相当の処理が走り、
+	 * 現在のフォント・スタイル状態がデフォルト値に同期される。
+	 *
 	 * 設定可能なキー:
 	 *   face          フォントフェイス
 	 *   fontsize      フォントサイズ
@@ -1195,7 +1199,7 @@ class RichTextRenderBase {
 	property defaultAlign;
 	property defaultValign;
 	property defaultRubySize;
-	property defaultChColor;
+	property defaultColor;
 	property defaultShadow;
 	property defaultShadowColor;
 	property defaultEdge;

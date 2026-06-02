@@ -103,40 +103,54 @@ public:
         if (!dict) return;
         tTJSVariant val;
 
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("face"), nullptr, &val, dict)))
+        // TJS Dictionary の PropGet は flag=0 だとメンバ未存在でも
+        // void variant を返して成功扱いになり、AsInteger() = 0 などで
+        // 上書きされてしまう (defaultAlign_/defaultValign_ が 0 = Center/Middle に
+        // なってしまうバグの原因)。TJS_MEMBERMUSTEXIST を必ず付けること。
+        const tjs_uint32 GET_FLAG = TJS_MEMBERMUSTEXIST;
+
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("face"), nullptr, &val, dict)))
             defaultFace_ = tjsToU16(val.GetString());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("fontsize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("fontsize"), nullptr, &val, dict)))
             defaultFontSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("bigfontsize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("bigfontsize"), nullptr, &val, dict)))
             bigFontSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("smallfontsize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("smallfontsize"), nullptr, &val, dict)))
             smallFontSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("bold"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("bold"), nullptr, &val, dict)))
             defaultBold_ = val.AsInteger() != 0;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("italic"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("italic"), nullptr, &val, dict)))
             defaultItalic_ = val.AsInteger() != 0;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("color"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("color"), nullptr, &val, dict)))
             defaultColor_ = static_cast<tjs_uint32>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadow"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("shadow"), nullptr, &val, dict)))
             defaultShadow_ = val.AsInteger() != 0;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadowcolor"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("shadowcolor"), nullptr, &val, dict)))
             defaultShadowColor_ = static_cast<tjs_uint32>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edge"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("edge"), nullptr, &val, dict)))
             defaultEdge_ = val.AsInteger() != 0;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edgecolor"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("edgecolor"), nullptr, &val, dict)))
             defaultEdgeColor_ = static_cast<tjs_uint32>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linespacing"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("linespacing"), nullptr, &val, dict)))
             defaultLineSpacing_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("pitch"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("pitch"), nullptr, &val, dict)))
             defaultPitch_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linesize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("linesize"), nullptr, &val, dict)))
             defaultLineSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("align"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("align"), nullptr, &val, dict)))
             defaultAlign_ = static_cast<int>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("valign"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("valign"), nullptr, &val, dict)))
             defaultValign_ = static_cast<int>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("rubysize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("rubysize"), nullptr, &val, dict)))
             defaultRubySize_ = static_cast<float>(val.AsReal());
+
+        // ★ デフォルト更新後、現在状態を default に同期する。
+        //   そうしないと buildFontPreamble() で
+        //   currentColor_ (初期値 0xFFFFFF) != defaultColor_ となり、
+        //   毎 render() に余計な <color value='#ffffff'> や <font size=...> が
+        //   被さってタグ外テキストが白で塗り潰される (透明 fill 状態) などの問題が出る。
+        resetFont();
+        resetStyle();
     }
 
     /**
@@ -150,7 +164,7 @@ public:
         tTJSVariant val;
 
         auto getBool = [&](const tjs_char* name, bool& out) {
-            if (TJS_SUCCEEDED(dict->PropGet(0, name, nullptr, &val, dict)))
+            if (TJS_SUCCEEDED(dict->PropGet(TJS_MEMBERMUSTEXIST, name, nullptr, &val, dict)))
                 out = static_cast<bool>(val);
         };
 
@@ -177,7 +191,7 @@ public:
 
         getBool(TJS_W("width_time_scale"), widthTimeScale_);
 
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("locale"), nullptr, &val, dict))) {
+        if (TJS_SUCCEEDED(dict->PropGet(TJS_MEMBERMUSTEXIST, TJS_W("locale"), nullptr, &val, dict))) {
             ttstr loc = val.GetString();
             if (loc.length() > 0) {
                 locale_ = tjsToNarrow(loc.c_str());
@@ -195,23 +209,24 @@ public:
 
         if (!dict) return;
         tTJSVariant val;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("face"), nullptr, &val, dict)))
+        const tjs_uint32 GET_FLAG = TJS_MEMBERMUSTEXIST;
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("face"), nullptr, &val, dict)))
             currentFace_ = tjsToU16(val.GetString());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("fontsize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("fontsize"), nullptr, &val, dict)))
             currentFontSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("bold"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("bold"), nullptr, &val, dict)))
             currentBold_ = static_cast<bool>(val);
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("italic"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("italic"), nullptr, &val, dict)))
             currentItalic_ = static_cast<bool>(val);
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("color"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("color"), nullptr, &val, dict)))
             currentColor_ = static_cast<tjs_uint32>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadow"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("shadow"), nullptr, &val, dict)))
             currentShadow_ = static_cast<bool>(val);
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("shadowcolor"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("shadowcolor"), nullptr, &val, dict)))
             currentShadowColor_ = static_cast<tjs_uint32>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edge"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("edge"), nullptr, &val, dict)))
             currentEdge_ = static_cast<bool>(val);
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("edgecolor"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("edgecolor"), nullptr, &val, dict)))
             currentEdgeColor_ = static_cast<tjs_uint32>(val.AsInteger());
     }
 
@@ -231,15 +246,16 @@ public:
         iTJSDispatch2* dict = elm.AsObjectNoAddRef();
         if (!dict) return;
         tTJSVariant val;
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linespacing"), nullptr, &val, dict)))
+        const tjs_uint32 GET_FLAG = TJS_MEMBERMUSTEXIST;
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("linespacing"), nullptr, &val, dict)))
             currentLineSpacing_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("pitch"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("pitch"), nullptr, &val, dict)))
             currentPitch_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("linesize"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("linesize"), nullptr, &val, dict)))
             currentLineSize_ = static_cast<float>(val.AsReal());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("align"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("align"), nullptr, &val, dict)))
             currentAlign_ = static_cast<int>(val.AsInteger());
-        if (TJS_SUCCEEDED(dict->PropGet(0, TJS_W("valign"), nullptr, &val, dict)))
+        if (TJS_SUCCEEDED(dict->PropGet(GET_FLAG, TJS_W("valign"), nullptr, &val, dict)))
             currentValign_ = static_cast<int>(val.AsInteger());
     }
 

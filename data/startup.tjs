@@ -835,7 +835,6 @@ class MainWindow extends Window {
         dm("TextRenderBase: renderCount=" + tr.renderCount
             + " renderDelay=" + tr.renderDelay
             + " renderLines=" + tr.renderLines);
-        dm("  renderText=[" + tr.renderText + "]");
 
         // キー待ち情報を表示
         var keyWaits = tr.getKeyWaits();
