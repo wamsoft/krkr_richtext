@@ -12,6 +12,7 @@
 #include "ncbind.hpp"
 
 #include <thorvg.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <map>
@@ -1353,24 +1354,25 @@ void initRichText()
             FontManager::instance().setFontDataLoader(
                 [](const std::string& name) -> FontDataBuffer {
                     ttstr path(name.c_str());
-                    IStream* stream = TVPCreateIStream(path, TJS_BS_READ);
+                    iTJSBinaryStream* stream = TVPCreateStream(path, TJS_BS_READ);
                     if (!stream) return nullptr;
 
                     // ストリームサイズ取得
-                    STATSTG stat;
-                    if (FAILED(stream->Stat(&stat, STATFLAG_NONAME))) {
-                        stream->Release();
-                        return nullptr;
-                    }
-                    size_t size = static_cast<size_t>(stat.cbSize.QuadPart);
+                    size_t size = static_cast<size_t>(stream->GetSize());
 
                     // バッファに読み込み
                     auto buffer = std::make_shared<std::vector<uint8_t>>(size);
-                    ULONG read = 0;
-                    HRESULT hr = stream->Read(buffer->data(), static_cast<ULONG>(size), &read);
-                    stream->Release();
+                    size_t readTotal = 0;
+                    while (readTotal < size) {
+                        tjs_uint readSize = stream->Read(
+                            buffer->data() + readTotal,
+                            static_cast<tjs_uint>(std::min<size_t>(size - readTotal, 0x40000000)));
+                        if (readSize == 0) break;
+                        readTotal += readSize;
+                    }
+                    stream->Destruct();
 
-                    if (FAILED(hr) || read != size) return nullptr;
+                    if (readTotal != size) return nullptr;
                     return buffer;
                 });
 
