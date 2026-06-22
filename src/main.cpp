@@ -21,30 +21,6 @@
 using namespace richtext;
 
 // ============================================================================
-// ログ出力
-// ============================================================================
-
-void message_log(const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    char msg[1024];
-    _vsnprintf_s(msg, 1024, _TRUNCATE, format, args);
-    TVPAddLog(ttstr(msg));
-    va_end(args);
-}
-
-void error_log(const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    char msg[1024];
-    _vsnprintf_s(msg, 1024, _TRUNCATE, format, args);
-    TVPAddImportantLog(ttstr(msg));
-    va_end(args);
-}
-
-// ============================================================================
 // ユーティリティ: TJS文字列 ⇔ UTF-16 変換
 // ============================================================================
 
@@ -1376,9 +1352,8 @@ void initRichText()
                     return buffer;
                 });
 
-            message_log("RichText: initialized");
         } else {
-            error_log("RichText: failed to initialize thorvg");
+            TVPAddImportantLog(TJS_W("RichText: failed to initialize thorvg"));
         }
     }
 }
@@ -1389,7 +1364,6 @@ void deInitRichText()
         FontManager::instance().terminate();
         tvg::Initializer::term();
         tvgInitialized = false;
-        message_log("RichText: terminated");
     }
 }
 
