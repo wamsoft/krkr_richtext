@@ -3,6 +3,10 @@
 
 #include "tp_stub.h"
 
+/* License API 非対応バージョンの tp_stub / 本体ヘッダと組み合わせた
+   ビルドでは登録をまるごとスキップして空関数になる (互換ガード)。 */
+#ifdef TVP_HAS_LICENSE_API
+
 /* richtext (1095 -> 654 bytes) */
 static const unsigned char lic_00[] = {
 	120,218,93,82,205,110,226,48,16,190,251,41,70,61,181,82,68,87,61,236,97,111,38,49,
@@ -60,3 +64,9 @@ void RegisterKrkrRichtextLicenses()
 	TVPRegisterLicense(TJS_W("richtext"), TJS_W("plugin:krkr_richtext"), lic_00, 654, 1095);
 	TVPRegisterLicense(TJS_W("minikin"), TJS_W("plugin:krkr_richtext"), lic_01, 401, 722);
 }
+
+#else /* !TVP_HAS_LICENSE_API */
+
+void RegisterKrkrRichtextLicenses() {}
+
+#endif /* TVP_HAS_LICENSE_API */
