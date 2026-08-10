@@ -1873,4 +1873,9 @@ NCB_REGISTER_CLASS_DIFFER(RichTextRenderBase, RichTextRender) {
 
 // 初期化・終了コールバック
 NCB_PRE_REGIST_CALLBACK(initRichText);
+// 同梱コンポーネントのライセンスを本体収集機構へ登録
+// (LicensesGen.cpp = licenses/manifest.json から生成)
+extern void RegisterKrkrRichtextLicenses();
+NCB_PRE_REGIST_CALLBACK(RegisterKrkrRichtextLicenses);
+
 NCB_POST_UNREGIST_CALLBACK(deInitRichText);

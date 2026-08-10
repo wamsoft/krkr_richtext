@@ -1,0 +1,6 @@
+{
+  "entries": [
+    { "name": "richtext", "group": "plugin:krkr_richtext", "file": "../richtext/LICENSE" },
+    { "name": "minikin", "group": "plugin:krkr_richtext", "file": "../richtext/ext/minikin/LICENSE" }
+  ]
+}
