@@ -7,6 +7,7 @@
 #define NOMINMAX
 #endif
 #include "richtext.hpp"
+#include "HostFontBackend.hpp"
 
 // ncbind.hppをrichtext.hppの後にインクルード
 #include "ncbind.hpp"
@@ -1324,9 +1325,20 @@ void initRichText()
     if (!tvgInitialized) {
         if (tvg::Initializer::init(4) == tvg::Result::Success) {
             tvgInitialized = true;
+
+            // 本体の統一フォントエンジン (glyphware) をバックエンドとして注入する。
+            // これで face とフォントバイト列が本体 drawText / Elements /
+            // layerExVector と共有される。本体が公開していない構成 (glyphware
+            // 無効ビルド) では richtext 側の既定バックエンドが使われる。
+            if (auto backend = krkr_richtext::createHostFontBackend()) {
+                FontManager::instance().setFontBackend(backend);
+                TVPAddImportantLog(TJS_W("RichText: using the engine's font service"));
+            }
+
             FontManager::instance().initialize();
 
             // 吉里吉里のストレージシステムを使うフォントデータローダーを登録
+            // (既定バックエンド用。本体バックエンド注入時は使われない)
             FontManager::instance().setFontDataLoader(
                 [](const std::string& name) -> FontDataBuffer {
                     ttstr path(name.c_str());

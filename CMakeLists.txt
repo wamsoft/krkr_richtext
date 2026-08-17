@@ -20,6 +20,7 @@ krkrz_plugin(krkr_richtext
     NCBIND
     SOURCES
         src/main.cpp
+        src/HostFontBackend.cpp
         src/LicensesGen.cpp
         src/EscapeConverter.cpp
     LIBRARIES
