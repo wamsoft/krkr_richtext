@@ -221,6 +221,38 @@ public:
         return false;
     }
 
+    bool getGlyphMask(uint32_t glyphId, const richtext::FontRenderParams& params,
+                      richtext::FontGlyphMask& out) override
+    {
+        tTVPFontRenderParams rp = {};
+        rp.Transform[0] = params.transform.xx;
+        rp.Transform[1] = params.transform.xy;
+        rp.Transform[2] = params.transform.dx;
+        rp.Transform[3] = params.transform.yx;
+        rp.Transform[4] = params.transform.yy;
+        rp.Transform[5] = params.transform.dy;
+        rp.Bold = params.bold;
+        rp.Italic = params.italic;
+        rp.StrokeWidth = params.strokeWidth;
+        rp.Join = (params.join == richtext::FontStrokeJoin::Miter) ? TVP_FONT_JOIN_MITER
+                : (params.join == richtext::FontStrokeJoin::Bevel) ? TVP_FONT_JOIN_BEVEL
+                                                                   : TVP_FONT_JOIN_ROUND;
+        rp.Cap = (params.cap == richtext::FontStrokeCap::Butt)   ? TVP_FONT_CAP_BUTT
+               : (params.cap == richtext::FontStrokeCap::Square) ? TVP_FONT_CAP_SQUARE
+                                                                 : TVP_FONT_CAP_ROUND;
+        rp.MiterLimit = params.miterLimit;
+
+        tTVPFontGlyphMask mask = {};
+        if (!TVPFontRenderGlyphMask(Handle, glyphId, &rp, &mask)) return false;
+        out.left = static_cast<int>(mask.Left);
+        out.top = static_cast<int>(mask.Top);
+        out.width = static_cast<int>(mask.Width);
+        out.rows = static_cast<int>(mask.Height);
+        out.pitch = static_cast<int>(mask.Pitch);
+        out.buffer = mask.Buffer;
+        return true;
+    }
+
     bool getColorLayers(uint32_t glyphId, float pixelSize,
                         std::vector<richtext::FontColorLayer>& out,
                         richtext::FontColorGlyphBox* box) override

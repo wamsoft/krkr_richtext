@@ -12,7 +12,6 @@
 // ncbind.hppをrichtext.hppの後にインクルード
 #include "ncbind.hpp"
 
-#include <thorvg.h>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -1315,16 +1314,16 @@ RichText_registerVariableFont_RawCallback(tTJSVariant* result, tjs_int numparams
 }
 
 // ============================================================================
-// thorvg 初期化・終了
+// 初期化・終了
 // ============================================================================
 
-static bool tvgInitialized = false;
+static bool richTextInitialized = false;
 
 void initRichText()
 {
-    if (!tvgInitialized) {
-        if (tvg::Initializer::init(4) == tvg::Result::Success) {
-            tvgInitialized = true;
+    if (!richTextInitialized) {
+        {
+            richTextInitialized = true;
 
             // 本体の統一フォントエンジン (glyphware) をバックエンドとして注入する。
             // これで face とフォントバイト列が本体 drawText / Elements /
@@ -1363,19 +1362,15 @@ void initRichText()
                     if (readTotal != size) return nullptr;
                     return buffer;
                 });
-
-        } else {
-            TVPAddImportantLog(TJS_W("RichText: failed to initialize thorvg"));
         }
     }
 }
 
 void deInitRichText()
 {
-    if (tvgInitialized) {
+    if (richTextInitialized) {
         FontManager::instance().terminate();
-        tvg::Initializer::term();
-        tvgInitialized = false;
+        richTextInitialized = false;
     }
 }
 
