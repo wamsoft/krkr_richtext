@@ -61,8 +61,12 @@ static const unsigned char lic_01[] = {
 
 void RegisterKrkrRichtextLicenses()
 {
-	TVPRegisterLicense(TJS_W("richtext"), TJS_W("plugin:krkr_richtext"), lic_00, 654, 1095);
-	TVPRegisterLicense(TJS_W("minikin"), TJS_W("plugin:krkr_richtext"), lic_01, 401, 722);
+	try {
+		TVPRegisterLicense(TJS_W("richtext"), TJS_W("plugin:krkr_richtext"), lic_00, 654, 1095);
+		TVPRegisterLicense(TJS_W("minikin"), TJS_W("plugin:krkr_richtext"), lic_01, 401, 722);
+	} catch (...) {
+		/* 本体が License API を持たない (古い本体) ときは登録しない */
+	}
 }
 
 #else /* !TVP_HAS_LICENSE_API */
