@@ -575,6 +575,10 @@ public:
     // isValid
     bool getIsValid() const { return layout_.isValid(); }
 
+    // 行分割戦略 (RichText.BREAK_*。layout() 前に設定する)
+    void setBreakStrategy(int v) { layout_.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
+    int getBreakStrategy() const { return static_cast<int>(layout_.getBreakStrategy()); }
+
     // タイミング解決
     void resolveAllTimings(float timeScale, bool widthTimeScale) {
         layout_.resolveAllTimings(timeScale, widthTimeScale);
@@ -1461,6 +1465,7 @@ NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
     NCB_PROPERTY_RO(maxWidth, getMaxWidth);
     NCB_PROPERTY_RO(maxHeight, getMaxHeight);
     NCB_PROPERTY_RO(isValid, getIsValid);
+    NCB_PROPERTY(breakStrategy, getBreakStrategy, setBreakStrategy);
     NCB_METHOD_RAW_CALLBACK(resolveAllTimings, RichTextStyledLayout_resolveAllTimings_RawCallback, 0);
     NCB_PROPERTY_RO(totalRenderDelay, getTotalRenderDelay);
     NCB_METHOD(calcShowCount);

@@ -730,6 +730,12 @@ class RichText {
 		 */
 		property isValid;
 
+		/**
+		 * 行分割戦略 (RichText.BREAK_GREEDY / BREAK_HIGH_QUALITY / BREAK_BALANCED)
+		 * @description layout() の前に設定します。既定は BREAK_HIGH_QUALITY です。
+		 */
+		property breakStrategy;
+
 		// -----------------------------------------------------------------
 		// タイミング解決
 		// -----------------------------------------------------------------
