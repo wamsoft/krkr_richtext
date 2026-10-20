@@ -530,6 +530,7 @@ public:
             v = r.charIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("charIndex"), nullptr, &v, dict);
             if (r.delay >= 0) { v = r.delay; dict->PropSet(TJS_MEMBERENSURE, TJS_W("delay"), nullptr, &v, dict); }
             if (r.linkIndex >= 0) { v = r.linkIndex; dict->PropSet(TJS_MEMBERENSURE, TJS_W("linkIndex"), nullptr, &v, dict); }
+            if (r.kind != 0) { v = r.kind; dict->PropSet(TJS_MEMBERENSURE, TJS_W("kind"), nullptr, &v, dict); }
             tTJSVariant dictVar(dict, dict);
             dict->Release();
             tTJSVariant* p = &dictVar;
@@ -578,6 +579,21 @@ public:
     // 行分割戦略 (RichText.BREAK_*。layout() 前に設定する)
     void setBreakStrategy(int v) { layout_.setBreakStrategy(static_cast<ParagraphLayout::BreakStrategy>(v)); }
     int getBreakStrategy() const { return static_cast<int>(layout_.getBreakStrategy()); }
+
+    // 描画範囲 [x, y, width, height]（描画原点からの位置。ルビ・注記を含み、縁取り・影は含まない）
+    tTJSVariant getBounds() const {
+        const auto& b = layout_.getBounds();
+        iTJSDispatch2* array = TJSCreateArrayObject();
+        tTJSVariant v[4] = { b.x, b.y, b.width, b.height };
+        for (int i = 0; i < 4; i++) array->PropSetByNum(TJS_MEMBERENSURE, i, &v[i], array);
+        tTJSVariant result(array, array);
+        array->Release();
+        return result;
+    }
+
+    // 組み方向 (RichText.WRITING_*。layout() 前に設定する)
+    void setWritingMode(int v) { layout_.setWritingMode(static_cast<StyledLayout::WritingMode>(v)); }
+    int getWritingMode() const { return static_cast<int>(layout_.getWritingMode()); }
 
     // タイミング解決
     void resolveAllTimings(float timeScale, bool widthTimeScale) {
@@ -1212,7 +1228,9 @@ RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numpa
         float x = static_cast<float>(param[1]->AsReal());
         float y = static_cast<float>(param[2]->AsReal());
         int maxChars = (numparams >= 4) ? static_cast<int>(param[3]->AsInteger()) : -1;
-        auto rects = objthis->getAtlas().getCopyRects(styledLayout->layout_, x, y, maxChars);
+        // 文字ごとの表示時刻 (<start> <delay> <wait>) も delay に入れる
+        auto rects = objthis->getAtlas().getCopyRects(styledLayout->layout_, x, y, maxChars,
+                                                      &styledLayout->layout_.getResolvedTimings());
         if (result) *result = RichTextTextureAtlas::copyRectsToVariant(rects);
         return TJS_S_OK;
     }
@@ -1466,6 +1484,8 @@ NCB_REGISTER_SUBCLASS(RichTextStyledLayout) {
     NCB_PROPERTY_RO(maxHeight, getMaxHeight);
     NCB_PROPERTY_RO(isValid, getIsValid);
     NCB_PROPERTY(breakStrategy, getBreakStrategy, setBreakStrategy);
+    NCB_PROPERTY(writingMode, getWritingMode, setWritingMode);
+    NCB_PROPERTY_RO(bounds, getBounds);
     NCB_METHOD_RAW_CALLBACK(resolveAllTimings, RichTextStyledLayout_resolveAllTimings_RawCallback, 0);
     NCB_PROPERTY_RO(totalRenderDelay, getTotalRenderDelay);
     NCB_METHOD(calcShowCount);
@@ -1510,6 +1530,11 @@ NCB_REGISTER_CLASS(RichText)
     Variant(TJS_W("BREAK_GREEDY"),       (int)ParagraphLayout::BreakStrategy::Greedy);
     Variant(TJS_W("BREAK_HIGH_QUALITY"), (int)ParagraphLayout::BreakStrategy::HighQuality);
     Variant(TJS_W("BREAK_BALANCED"),     (int)ParagraphLayout::BreakStrategy::Balanced);
+
+    // 組み方向 (StyledLayout.writingMode)
+    Variant(TJS_W("WRITING_HORIZONTAL"),  (int)StyledLayout::WritingMode::Horizontal);
+    Variant(TJS_W("WRITING_VERTICAL_RL"), (int)StyledLayout::WritingMode::VerticalRl);
+    Variant(TJS_W("WRITING_VERTICAL_LR"), (int)StyledLayout::WritingMode::VerticalLr);
     
     // 双方向テキスト
     Variant(TJS_W("BIDI_LTR"),         (int)minikin::Bidi::LTR);
