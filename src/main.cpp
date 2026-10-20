@@ -1008,11 +1008,17 @@ static std::map<std::string, Appearance> parseAppearances(tTJSVariant* param) {
     return appearances;
 }
 
+// Layer 拡張の実体を取得する (インスタンスフックと同じく、無ければ作り、画像バッファを取り直す)。
+// RAW_CALLBACK はインスタンスフックを通らないので、各コールバックはこれで実体を得る
+static LayerExRichText* layerExRichTextInstance(iTJSDispatch2* layerObj);
+
 // drawTextLayout RawCallback（省略可能maxChars対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                           tTJSVariant** param, LayerExRichText* objthis)
+                                           tTJSVariant** param, iTJSDispatch2* layerObj)
 {
+    LayerExRichText* objthis = layerExRichTextInstance(layerObj);
+    if (!objthis) return TJS_E_NATIVECLASSCRASH;
     if (numparams < 4) return TJS_E_BADPARAMCOUNT;
     RichTextLayout* textLayout = ncbInstanceAdaptor<RichTextLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     float x = static_cast<float>(param[1]->AsReal());
@@ -1031,8 +1037,10 @@ LayerExRichText_drawTextLayout_RawCallback(tTJSVariant* result, tjs_int numparam
 // drawStyledText RawCallback（省略可能lineSpacing対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                           tTJSVariant** param, LayerExRichText* objthis)
+                                           tTJSVariant** param, iTJSDispatch2* layerObj)
 {
+    LayerExRichText* objthis = layerExRichTextInstance(layerObj);
+    if (!objthis) return TJS_E_NATIVECLASSCRASH;
     if (numparams < 9) return TJS_E_BADPARAMCOUNT;
     ttstr text = static_cast<ttstr>(*param[0]);
     float x = static_cast<float>(param[1]->AsReal());
@@ -1056,8 +1064,10 @@ LayerExRichText_drawStyledText_RawCallback(tTJSVariant* result, tjs_int numparam
 
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawParagraphLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                                tTJSVariant** param, LayerExRichText* objthis)
+                                                tTJSVariant** param, iTJSDispatch2* layerObj)
 {
+    LayerExRichText* objthis = layerExRichTextInstance(layerObj);
+    if (!objthis) return TJS_E_NATIVECLASSCRASH;
     if (numparams < 9) return TJS_E_BADPARAMCOUNT;
     RichTextParagraphLayout* paraLayout = ncbInstanceAdaptor<RichTextParagraphLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     float x = static_cast<float>(param[1]->AsReal());
@@ -1252,8 +1262,10 @@ RichTextTextureAtlas_getCopyRects_RawCallback(tTJSVariant* result, tjs_int numpa
 // drawStyledLayout RawCallback（省略可能maxChars対応）
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawStyledLayout_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                             tTJSVariant** param, LayerExRichText* objthis)
+                                             tTJSVariant** param, iTJSDispatch2* layerObj)
 {
+    LayerExRichText* objthis = layerExRichTextInstance(layerObj);
+    if (!objthis) return TJS_E_NATIVECLASSCRASH;
     if (numparams < 3) return TJS_E_BADPARAMCOUNT;
     RichTextStyledLayout* styledLayout = ncbInstanceAdaptor<RichTextStyledLayout>::GetNativeInstance(param[0]->AsObjectNoAddRef());
     float x = static_cast<float>(param[1]->AsReal());
@@ -1270,8 +1282,10 @@ LayerExRichText_drawStyledLayout_RawCallback(tTJSVariant* result, tjs_int numpar
 
 static tjs_error TJS_INTF_METHOD
 LayerExRichText_drawRect_RawCallback(tTJSVariant* result, tjs_int numparams,
-                                     tTJSVariant** param, LayerExRichText* objthis)
+                                     tTJSVariant** param, iTJSDispatch2* layerObj)
 {
+    LayerExRichText* objthis = layerExRichTextInstance(layerObj);
+    if (!objthis) return TJS_E_NATIVECLASSCRASH;
     if (numparams < 4) return TJS_E_BADPARAMCOUNT;
     float x = static_cast<float>(param[0]->AsReal());
     float y = static_cast<float>(param[1]->AsReal());
@@ -1522,6 +1536,22 @@ NCB_GET_INSTANCE_HOOK(LayerExRichText)
     ~NCB_GET_INSTANCE_HOOK_CLASS() {
     }
 };
+
+static LayerExRichText* layerExRichTextInstance(iTJSDispatch2* layerObj)
+{
+    // NCB_GET_INSTANCE_HOOK(LayerExRichText) と同じ処理 (フックのクラスは ncbind の private なので直接は呼べない)
+    typedef ncbInstanceAdaptor<LayerExRichText> AdaptorT;
+    LayerExRichText* obj = AdaptorT::GetNativeInstance(layerObj);
+    if (!obj) {
+        obj = new LayerExRichText(layerObj);
+        if (!AdaptorT::SetAdaptorWithNativeInstance(layerObj, obj)) {
+            delete obj;
+            return nullptr;
+        }
+    }
+    obj->reset();
+    return obj;
+}
 
 // Layer 拡張としてアタッチ
 NCB_ATTACH_CLASS_WITH_HOOK(LayerExRichText, Layer) {
