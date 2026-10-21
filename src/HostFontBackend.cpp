@@ -28,6 +28,11 @@
 
 namespace krkr_richtext {
 
+// プロセス終了後は face を本体へ返さない (markHostShutdown 参照)
+static bool hostShutdown = false;
+
+void markHostShutdown() { hostShutdown = true; }
+
 namespace {
 
 ttstr utf8ToTtstr(const std::string& s)
@@ -93,7 +98,7 @@ public:
 
     ~HostFace() override
     {
-        if (Handle) TVPFontReleaseFace(Handle);
+        if (Handle && !hostShutdown) TVPFontReleaseFace(Handle);
     }
 
     /// 開けなければ nullptr

@@ -9,6 +9,8 @@
 #include "richtext.hpp"
 #include "HostFontBackend.hpp"
 
+#include <cstdlib>
+
 // ncbind.hppをrichtext.hppの後にインクルード
 #include "ncbind.hpp"
 
@@ -1371,6 +1373,12 @@ void initRichText()
             }
 
             FontManager::instance().initialize();
+
+            // プロセス終了時は V2Unlink を通らずに FontManager の静的デストラクタで
+            // face が解放される。そのときは本体が片付いているので返さないようにする。
+            // atexit は登録の逆順に呼ばれるので、FontManager (上で構築済み) の
+            // デストラクタより先にこちらが呼ばれる
+            std::atexit([] { krkr_richtext::markHostShutdown(); });
 
             // 吉里吉里のストレージシステムを使うフォントデータローダーを登録
             // (既定バックエンド用。本体バックエンド注入時は使われない)

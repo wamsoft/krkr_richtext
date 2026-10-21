@@ -20,6 +20,15 @@ namespace krkr_richtext {
  */
 std::shared_ptr<richtext::FontBackend> createHostFontBackend();
 
+/**
+ * プロセス終了を知らせる。以後 face を本体へ返さない
+ *
+ * プロセス終了時は V2Unlink が呼ばれないまま DLL が外れ、残っている face は
+ * FontManager の静的デストラクタで解放される。そのときには本体側が片付いて
+ * いて、本体の関数を呼ぶと落ちるので、返さずに捨てる。
+ */
+void markHostShutdown();
+
 } // namespace krkr_richtext
 
 #endif // KRKR_RICHTEXT_HOST_FONT_BACKEND_HPP
